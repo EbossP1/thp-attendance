@@ -133,6 +133,19 @@ function toggleTheme(){
   const btn=$('theme-toggle'); if(btn) btn.textContent=t==='dark'?'☀️':'🌙';
 })();
 
+/* ── LOADING OVERLAY ── */
+function showLoader(msg){
+  const el=$('loading-overlay');if(!el)return;
+  if(msg){const t=$('lo-text');if(t)t.textContent=msg;}
+  el.classList.remove('fade-out');
+  el.classList.add('active');
+}
+function hideLoader(){
+  const el=$('loading-overlay');if(!el)return;
+  el.classList.add('fade-out');
+  setTimeout(()=>{el.classList.remove('active','fade-out');},450);
+}
+
 /* ═══════════════════════════════════════════════
    4. API MODULE — Supabase Primary + GAS Mirror
    ─────────────────────────────────────────────
@@ -188,9 +201,10 @@ const API={
   },
 
   showBar(state,msg){
-    const b=$('sync-bar');if(!b)return;
-    b.className='show '+state;$('sync-msg').textContent=msg;
-    if(state==='synced'||state==='error')setTimeout(()=>b.classList.remove('show'),3200);
+    /* Small non-blocking mini-toast for save/update operations */
+    if(state==='syncing')return; /* skip "syncing" — only show result */
+    const type=state==='synced'?'ok':state==='error'?'err':'info';
+    toast(msg,type);
   },
 
   /* ═══════════════════════════════════════════
@@ -869,7 +883,10 @@ class App{
     /* Remember the raw password used to log in — needed for first-login password change */
     this._loginRawPass=rawPass;
 
-    /* Hydrate ALL data from server (silent — no sync bar) */
+    /* Show loading overlay while hydrating */
+    showLoader('Loading your data…');
+
+    /* Hydrate ALL data from server */
     const data=await API.hydrate();
     if(data&&data.success){
       this.staff=data.staff||{};
@@ -878,6 +895,8 @@ class App{
       this.holidays=data.holidays||[];
       this._cacheH();
     }
+
+    const loT=$('lo-text');if(loT)loT.textContent='Setting up your dashboard…';
 
     /* DO NOT auto-migrate passwords here.
        The change password form handles migration properly. */
@@ -891,6 +910,7 @@ class App{
         this.renderAdmin();this._renderDash();this._renderStaffGrid();this._renderReports();this.renderAdminLeave();this._updateNotifBadges();
         this._populateSupervisorDropdown();this._initEntQR();this.renderAdminHolidays();
         if($('script-url-input')&&API.getUrl())$('script-url-input').value=API.getUrl();
+        hideLoader();
       },100);
       API.updateChips();
       return toast('Welcome, Administrator! 👋');
@@ -909,6 +929,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');
         if(isDefault)setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);
+        hideLoader();
       },100);
     } else {
       showView('staff-view');
@@ -921,6 +942,7 @@ class App{
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
         if(isDefault){setTimeout(()=>showPanel('p-chpw','sb-staff',null),400);setTimeout(()=>toast('⚠️ Please change your default password.','info'),2000);}
+        hideLoader();
       },100);
     }
     API.updateChips();
@@ -2080,7 +2102,8 @@ const APP=new App();
     const {id,token}=session;
     if(!id||!token)return;
 
-    // Hide login to prevent flash
+    // Show loading overlay & hide login to prevent flash
+    showLoader('Verifying your session…');
     const loginEl=$('login-view');
     if(loginEl)loginEl.style.display='none';
 
@@ -2089,6 +2112,7 @@ const APP=new App();
     if(!result||!result.success){
       // Invalid session — back to login
       clearSession();
+      hideLoader();
       if(loginEl)loginEl.style.display='';
       return;
     }
@@ -2096,6 +2120,7 @@ const APP=new App();
     APP.user=result.user;
 
     /* Hydrate all data from server */
+    const loT=$('lo-text');if(loT)loT.textContent='Loading your data…';
     const data=await API.hydrate();
     if(data&&data.success){
       APP.staff=data.staff||{};
@@ -2105,6 +2130,7 @@ const APP=new App();
       APP._cacheH();
     }
 
+    if(loT)loT.textContent='Setting up your dashboard…';
     const role=APP.user.role;
 
     if(role==='admin'){
@@ -2113,6 +2139,7 @@ const APP=new App();
         APP.renderAdmin();APP._renderDash();APP._renderStaffGrid();APP._renderReports();APP.renderAdminLeave();APP._updateNotifBadges();
         APP._populateSupervisorDropdown();APP._initEntQR();APP.renderAdminHolidays();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
+        hideLoader();
       },100);
       API.updateChips();
       return;
@@ -2130,6 +2157,7 @@ const APP=new App();
         APP._sessCheck();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
+        hideLoader();
       },100);
     } else {
       showView('staff-view');
@@ -2141,6 +2169,7 @@ const APP=new App();
         APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
+        hideLoader();
       },100);
     }
     API.updateChips();
