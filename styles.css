@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   THP-GHANA SMART ATTENDANCE SYSTEM — Stylesheet
-   Version: 5.1
+   THP-GHANA ATTENDANCE SYSTEM — Stylesheet
    
    TABLE OF CONTENTS:
    1. Theme Variables & Base
@@ -103,7 +102,7 @@ body{
 #loading-overlay.active{display:flex;}
 #loading-overlay.fade-out{opacity:0;pointer-events:none;}
 .lo-ring{
-  position:relative;width:52px;height:52px;
+  position:relative;width:56px;height:56px;
   display:flex;align-items:center;justify-content:center;
 }
 .lo-spinner{
@@ -114,8 +113,10 @@ body{
   animation:loSpin .65s linear infinite;
 }
 .lo-logo{
-  width:28px;height:28px;border-radius:50%;object-fit:cover;
+  width:32px;height:32px;border-radius:50%;object-fit:cover;
   position:relative;z-index:1;
+  background:#fff;padding:2px;
+  box-shadow:0 0 0 1px rgba(45,53,146,.1);
 }
 .lo-text{font-size:.78rem;color:var(--text2);font-weight:500;letter-spacing:.2px;}
 @keyframes loSpin{to{transform:rotate(-360deg);}}
