@@ -113,10 +113,8 @@ body{
   animation:loSpin .65s linear infinite;
 }
 .lo-logo{
-  width:32px;height:32px;border-radius:50%;object-fit:cover;
+  width:34px;height:34px;border-radius:8px;object-fit:cover;
   position:relative;z-index:1;
-  background:#fff;padding:2px;
-  box-shadow:0 0 0 1px rgba(45,53,146,.1);
 }
 .lo-text{font-size:.78rem;color:var(--text2);font-weight:500;letter-spacing:.2px;}
 @keyframes loSpin{to{transform:rotate(-360deg);}}
