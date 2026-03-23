@@ -93,18 +93,32 @@ body{
 }
 
 /* ── SYNC BAR ── */
-#sync-bar{
-  position:fixed;top:0;left:0;right:0;z-index:9000;
-  padding:.38rem 1rem;font-size:.76rem;font-weight:500;
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  transform:translateY(-100%);transition:transform .3s;
+/* ── LOADING OVERLAY ── */
+#loading-overlay{
+  position:fixed;inset:0;z-index:10000;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;
+  background:var(--bg);
+  transition:opacity .4s ease;
 }
-#sync-bar.show{transform:translateY(0);}
-#sync-bar.syncing{background:rgba(45,53,146,.95);color:#a5b4fc;}
-#sync-bar.synced {background:rgba(20,83,45,.95); color:#86efac;}
-#sync-bar.offline{background:rgba(120,53,15,.95); color:#fcd34d;}
-#sync-bar.error  {background:rgba(127,29,29,.95); color:#fca5a5;}
-.sdot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.2s infinite;}
+#loading-overlay.active{display:flex;}
+#loading-overlay.fade-out{opacity:0;pointer-events:none;}
+.lo-ring{
+  position:relative;width:52px;height:52px;
+  display:flex;align-items:center;justify-content:center;
+}
+.lo-spinner{
+  position:absolute;inset:0;border-radius:50%;
+  border:2.5px solid rgba(45,53,146,.12);
+  border-top-color:#2D3592;
+  border-right-color:#3DBFB8;
+  animation:loSpin .65s linear infinite;
+}
+.lo-logo{
+  width:28px;height:28px;border-radius:50%;object-fit:cover;
+  position:relative;z-index:1;
+}
+.lo-text{font-size:.78rem;color:var(--text2);font-weight:500;letter-spacing:.2px;}
+@keyframes loSpin{to{transform:rotate(-360deg);}}
 
 /* ── SETUP BANNER ── */
 #setup-banner{
