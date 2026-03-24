@@ -329,12 +329,16 @@ const API={
       overall_status:leave.status||'Pending'
     });
     if(!r)return{success:false};
-    // Trigger email notification via GAS (fire and forget)
-    this.gasPost({action:'applyLeave',leave}).catch(()=>{});
+    // Trigger email notification via GAS — include all recipient emails
+    const emailPayload={action:'applyLeave',leave:{...leave,
+      supervisorEmail:leave._supervisorEmail||'',
+      finalApproverEmail:leave._finalApproverEmail||''
+    }};
+    this.gasPost(emailPayload).catch(()=>{});
     return{success:true,leaveId:leave.id};
   },
 
-  async updateLeave(id,status,note,stage){
+  async updateLeave(id,status,note,stage,extraEmailData){
     const isFinal=(stage==='final'||stage==='hr');
     const update=isFinal
       ?{final_approver_status:status,final_approver_note:note||'',overall_status:status,updated_at:new Date().toISOString()}
@@ -343,8 +347,9 @@ const API={
         :{supervisor_status:status,supervisor_note:note||'',final_approver_status:'Pending',overall_status:'Pending',updated_at:new Date().toISOString()};
     const r=await this._update('leave_requests','id=eq.'+encodeURIComponent(id),update);
     if(r===null)return{success:false};
-    // Trigger email via GAS
-    this.gasPost({action:'updateLeave',id,status,note,stage}).catch(()=>{});
+    // Trigger email via GAS — include recipient emails
+    const emailPayload={action:'updateLeave',id,status,note,stage,...(extraEmailData||{})};
+    this.gasPost(emailPayload).catch(()=>{});
     return{success:true};
   },
 
@@ -364,6 +369,31 @@ const API={
     if(String(rows[0].password)!==String(oldPass))return{success:false,error:'Incorrect current password'};
     await this._update('staff','id=eq.'+encodeURIComponent(id),{password:newPass});
     return{success:true};
+  },
+
+  /* ── Forgot Password — generate temp pass, save to Supabase, email via GAS ── */
+  async resetPassword(staffId){
+    if(!staffId)return{success:false,error:'Staff ID required'};
+    if(staffId==='ADMIN01')return{success:false,error:'Admin password cannot be reset this way. Contact the system administrator.'};
+    const rows=await this._get('staff','id=eq.'+encodeURIComponent(staffId));
+    if(!rows||!rows.length)return{success:false,error:'Staff ID not found in the system.'};
+    const staff=rows[0];
+    const email=(staff.email||'').trim();
+    if(!email)return{success:false,error:'No email registered for this account. Please contact the Administrator to reset your password.'};
+    // Generate a 6-character temporary password
+    const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let tempPass='';for(let i=0;i<6;i++)tempPass+=chars[Math.floor(Math.random()*chars.length)];
+    // Save temp password to Supabase (plain text — user will be forced to change on login)
+    await this._update('staff','id=eq.'+encodeURIComponent(staffId),{password:tempPass});
+    // Send email via GAS
+    const emailResult=await this.gasPost({
+      action:'resetPassword',
+      staffId,
+      staffName:staff.name,
+      staffEmail:email,
+      tempPassword:tempPass
+    }).catch(()=>null);
+    return{success:true,email:email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),emailSent:!!emailResult};
   },
 
   /* ═══════════════════════════════════════════
@@ -427,7 +457,6 @@ const API={
      SICK NOTE UPLOAD — Supabase Storage
   ═══════════════════════════════════════════ */
   async uploadSickNote(leaveId,fileName,fileData,mimeType){
-    this.showBar('syncing','Uploading medical document…');
     try{
       // Decode base64 to blob
       const byteChars=atob(fileData);
@@ -435,20 +464,40 @@ const API={
       for(let i=0;i<byteChars.length;i++)byteArr[i]=byteChars.charCodeAt(i);
       const blob=new Blob([byteArr],{type:mimeType||'application/octet-stream'});
 
-      const path=leaveId+'/'+fileName;
+      // Sanitize filename
+      const safeName=fileName.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path=leaveId+'/'+safeName;
       const r=await fetch(SUPABASE.URL+'/storage/v1/object/sick-notes/'+path,{
         method:'POST',
-        headers:{'apikey':SUPABASE.KEY,'Authorization':'Bearer '+SUPABASE.KEY,'Content-Type':mimeType||'application/octet-stream'},
+        headers:{
+          'apikey':SUPABASE.KEY,
+          'Authorization':'Bearer '+SUPABASE.KEY,
+          'Content-Type':mimeType||'application/octet-stream',
+          'x-upsert':'true'
+        },
         body:blob
       });
-      if(!r.ok){this.showBar('error','Upload failed');return{success:false};}
+      if(!r.ok){
+        const errText=await r.text().catch(()=>'');
+        console.warn('Sick note upload failed:',r.status,errText);
+        // Still save the filename in the leave record
+        await this._update('leave_requests','id=eq.'+encodeURIComponent(leaveId),{sick_note:fileName});
+        toast('File reference saved, but storage upload failed','err');
+        return{success:false};
+      }
 
       const fileUrl=SUPABASE.URL+'/storage/v1/object/public/sick-notes/'+path;
       // Update leave record with file URL
       await this._update('leave_requests','id=eq.'+encodeURIComponent(leaveId),{sick_note:fileName+' | '+fileUrl});
-      this.showBar('synced','Document uploaded ✓');
+      toast('Document uploaded ✓');
       return{success:true,fileUrl,downloadUrl:fileUrl,fileName,leaveId};
-    }catch(e){console.warn('Upload error:',e);this.showBar('error','Upload failed');return{success:false};}
+    }catch(e){
+      console.warn('Upload error:',e);
+      // Fallback — save filename only
+      await this._update('leave_requests','id=eq.'+encodeURIComponent(leaveId),{sick_note:fileName}).catch(()=>{});
+      toast('Upload failed — file reference saved','err');
+      return{success:false};
+    }
   },
 
   /* ═══════════════════════════════════════════
@@ -903,6 +952,7 @@ class App{
 
     const role=this.user.role;
     const isDefault=(rawPass==='1234'||rawPass==='admin123');
+    const isTempPass=(/^[A-Z0-9]{6}$/.test(rawPass)&&!isDefault);
 
     if(role==='admin'){
       showView('admin-view');
@@ -928,7 +978,7 @@ class App{
         this._sessCheck();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');
-        if(isDefault)setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);
+        if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
       },100);
     } else {
@@ -941,12 +991,56 @@ class App{
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
-        if(isDefault){setTimeout(()=>showPanel('p-chpw','sb-staff',null),400);setTimeout(()=>toast('⚠️ Please change your default password.','info'),2000);}
+        if(isDefault||isTempPass){setTimeout(()=>showPanel('p-chpw','sb-staff',null),400);setTimeout(()=>toast(isTempPass?'🔐 You logged in with a temporary password. Please set a new one now.':'⚠️ Please change your default password.','info'),1500);}
         hideLoader();
       },100);
     }
     API.updateChips();
     toast('Welcome back, '+this.user.name+'! 👋');
+  }
+
+  /* ── Forgot Password ── */
+  showForgotPass(){
+    // Hide login fields, show forgot panel
+    ['uni-id','uni-pass'].forEach(id=>{const el=$(id);if(el)el.closest('.lc-field').style.display='none';});
+    const err=$('lc-err');if(err)err.style.display='none';
+    const btn=document.querySelector('.lc-btn');if(btn)btn.style.display='none';
+    const forgotLink=document.querySelector('.lc-forgot');if(forgotLink)forgotLink.style.display='none';
+    $('forgot-panel').style.display='block';
+    $('forgot-id')?.focus();
+  }
+  showLoginForm(){
+    ['uni-id','uni-pass'].forEach(id=>{const el=$(id);if(el)el.closest('.lc-field').style.display='';});
+    const err=$('lc-err');if(err){err.style.display='';err.textContent='';}
+    const btn=document.querySelector('.lc-btn');if(btn)btn.style.display='';
+    const forgotLink=document.querySelector('.lc-forgot');if(forgotLink)forgotLink.style.display='';
+    $('forgot-panel').style.display='none';
+    const msg=$('forgot-msg');if(msg)msg.textContent='';
+    $('uni-id')?.focus();
+  }
+  async forgotPassword(){
+    const id=$('forgot-id')?.value.trim().toUpperCase();
+    const msg=$('forgot-msg');
+    if(!id){if(msg)msg.innerHTML='<span style="color:var(--red)">Please enter your Staff ID.</span>';return;}
+
+    // Show loading state
+    const btn=$('forgot-panel')?.querySelector('.lc-btn');
+    if(btn){btn.classList.add('loading');btn.querySelector('span').textContent='Sending…';}
+    if(msg)msg.innerHTML='<span style="color:var(--teal)">⏳ Looking up your account…</span>';
+
+    const result=await API.resetPassword(id);
+
+    if(btn){btn.classList.remove('loading');btn.querySelector('span').textContent='Send Temporary Password';}
+
+    if(!result||!result.success){
+      if(msg)msg.innerHTML=`<span style="color:var(--red)">${result?.error||'Something went wrong. Try again.'}</span>`;
+      return;
+    }
+
+    if(msg)msg.innerHTML=`<span style="color:var(--green)">✓ Temporary password sent to <strong>${result.email}</strong>.<br>Check your inbox (and spam folder), then come back and sign in.</span>`;
+    // Clear input and disable button briefly
+    if($('forgot-id'))$('forgot-id').value='';
+    if(btn){btn.disabled=true;setTimeout(()=>{btn.disabled=false;},10000);}
   }
 
   /* ── Admin password change ── */
@@ -1334,7 +1428,9 @@ class App{
       supervisorId,supervisorStatus,supervisorNote:'',
       finalApproverId,finalApproverStatus:uid===COUNTRY_LEADER_ID?'Approved':supervisorStatus==='N/A'?'Pending':'Waiting',finalApproverNote:'',
       status:uid===COUNTRY_LEADER_ID?'Approved':'Pending',hrStatus:uid===COUNTRY_LEADER_ID?'Approved':'Pending',hrNote:'',
-      sickNote:type==='Sick Leave'?($(p+'sick-file')?.files[0]?.name||''):''
+      sickNote:type==='Sick Leave'?($(p+'sick-file')?.files[0]?.name||''):'',
+      _supervisorEmail:this.staff[supervisorId]?.email||'',
+      _finalApproverEmail:this.staff[finalApproverId]?.email||''
     };
 
     /* SERVER FIRST */
@@ -1573,7 +1669,15 @@ class App{
     const stage=isFinalApprover?'final':'supervisor';
 
     /* SERVER FIRST */
-    const result=await API.updateLeave(id,status,note,stage);
+    const extraEmailData={
+      staffName:lv.name,staffEmail:lv.staffEmail||this.staff[lv.staffId]?.email||'',
+      supervisorEmail:this.staff[lv.supervisorId]?.email||'',
+      finalApproverEmail:this.staff[lv.finalApproverId]?.email||'',
+      leaveType:lv.type,leaveDays:lv.days,
+      startDate:lv.startDate,endDate:lv.endDate,
+      decidedBy:this.user.name
+    };
+    const result=await API.updateLeave(id,status,note,stage,extraEmailData);
     if(!result||!result.success){toast('Server error — try again','err');return;}
 
     /* Update local cache */
@@ -1637,15 +1741,16 @@ class App{
     });
   }
 
-  async deleteRecord(id,inTime){
+  async deleteRecord(staffId,inTime){
     if(!confirm('Delete this record?'))return;
-    /* SERVER FIRST */
-    const inD=new Date(inTime);
-    const mm=String(inD.getMonth()+1).padStart(2,'0'),dd=String(inD.getDate()).padStart(2,'0');
-    const hh=String(inD.getHours()).padStart(2,'0'),mi=String(inD.getMinutes()).padStart(2,'0');
-    const rowId=`${id}_${inD.getFullYear()}${mm}${dd}_${hh}${mi}`;
-    await API.post({action:'deleteRecord',rowId});
-    this.records=this.records.filter(r=>!(r.id===id&&r.in===inTime));
+    /* SERVER FIRST — find by staff_id + clock_in, then delete by Supabase id */
+    try{
+      const rows=await API._get('attendance','staff_id=eq.'+encodeURIComponent(staffId)+'&clock_in=eq.'+encodeURIComponent(inTime)+'&limit=1');
+      if(rows&&rows.length){
+        await API._delete('attendance','id=eq.'+rows[0].id);
+      }
+    }catch(e){console.warn('Delete error:',e);}
+    this.records=this.records.filter(r=>!(r.id===staffId&&r.in===inTime));
     this._cacheR();this.renderAdmin();this._renderDash();this._renderReports();
     toast('Record deleted','info');
   }
