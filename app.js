@@ -1246,7 +1246,8 @@ class App{
       setBadge('badge-mgr-leave','mob-badge-mgr-leave',pending);
     }
     if(role==='staff'){
-      const updated=this.leave.filter(l=>l.staffId===this.user.id&&(l.status==='Approved'||l.status==='Rejected')&&!l._seenByStaff).length;
+      const seen=this._getSeenLeaveIds();
+      const updated=this.leave.filter(l=>l.staffId===this.user.id&&(l.status==='Approved'||l.status==='Rejected')&&!seen[l.id]).length;
       setBadge('badge-staff-leave','mob-badge-staff-leave',updated);
     }
     if(role==='admin'){
@@ -1254,11 +1255,22 @@ class App{
       setBadge('badge-admin-leave','mob-badge-admin-leave',pending);
     }
   }
+  _getSeenLeaveIds(){
+    try{return JSON.parse(localStorage.getItem('thp_seen_leave')||'{}');}catch(e){return{};}
+  }
   _markLeaveDecisionsSeen(){
     if(this.user?.role!=='staff')return;
+    const seen=this._getSeenLeaveIds();
     let changed=false;
-    this.leave.forEach(l=>{if(l.staffId===this.user.id&&(l.status==='Approved'||l.status==='Rejected')&&!l._seenByStaff){l._seenByStaff=true;changed=true;}});
-    if(changed){this._cacheL();this._updateNotifBadges();}
+    this.leave.forEach(l=>{
+      if(l.staffId===this.user.id&&(l.status==='Approved'||l.status==='Rejected')&&!seen[l.id]){
+        seen[l.id]=true;changed=true;
+      }
+    });
+    if(changed){
+      localStorage.setItem('thp_seen_leave',JSON.stringify(seen));
+      this._updateNotifBadges();
+    }
   }
 
   _renderMgrLeaveBal(){
@@ -1968,7 +1980,8 @@ class App{
       hdr.innerHTML='<th>Date</th><th>Staff ID</th><th>Name</th><th>Unit</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th>';
       body.innerHTML=recs.length?recs.slice().reverse().map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'Active'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">📭</div>No records</div></td></tr>';
     } else {
-      const staffList=Object.entries(this.staff);
+      const EXCLUDED_UNITS=['National Service','Intern'];
+      const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
       const allDays=this._mgrRepDays();
       const rows=[];
       allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));rows.push({id,name:s.name,unit:s.unit,date:dateStr,dt,present,onLeave});});});
@@ -1980,7 +1993,7 @@ class App{
   exportMgrReport(){
     const isHR=this.user.id===HR_MANAGER_ID;
     if(isHR){let recs=this._mgrRepFilter(this.records.slice()).reverse();let csv='Date,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';recs.forEach(r=>{csv+=`"${fmtD(r.date||r.in)}","${r.id}","${r.name}","${r.unit}","${fmtT(r.in)}","${r.out?fmtT(r.out):'Active'}","${r.hours||'--'}","${r.status}"\n`;});this._dl(csv,'THP_FullReport_'+Date.now()+'.csv','text/csv');}
-    else{const staffList=Object.entries(this.staff);const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
+    else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
   }
   printMgrReport(){
     const tbl=$('m-report-table');if(!tbl)return;
