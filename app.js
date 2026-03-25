@@ -820,8 +820,8 @@ class App{
   _clock(){
     const t=()=>{
       const n=new Date(),ts=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}),ds=n.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-      ['st-time','qr-clock'].forEach(id=>{const e=$(id);if(e)e.textContent=ts;});
-      ['st-date-hdr','st-date-sub','ad-date','mgr-date','qr-date'].forEach(id=>{const e=$(id);if(e)e.textContent=ds;});
+      ['st-time','m-time','qr-clock'].forEach(id=>{const e=$(id);if(e)e.textContent=ts;});
+      ['st-date-hdr','st-date-sub','m-date-hdr','m-date-sub','ad-date','mgr-date','qr-date'].forEach(id=>{const e=$(id);if(e)e.textContent=ds;});
     };t();setInterval(t,1000);
   }
   _qrParam(){
@@ -1171,6 +1171,18 @@ class App{
     el.closest('.filter-chips').querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
     el.classList.add('active');
     this.renderStaffLogs();
+  }
+
+  /* ── Manager My Logs (personal attendance) ── */
+  renderMgrMyLogs(){
+    const mv=$('mgr-my-mth')?.value;
+    let recs=this.records.filter(r=>r.id===this.user.id);
+    if(mv){const[y,m]=mv.split('-').map(Number);recs=recs.filter(r=>{const d=new Date(r.date||r.in);return d.getFullYear()===y&&d.getMonth()===m-1;});}
+    recs.sort((a,b)=>new Date(b.date||b.in)-new Date(a.date||a.in));
+    const cnt=$('mgr-my-count');if(cnt)cnt.textContent=recs.length;
+    const body=$('mgr-my-logs-body');if(!body)return;
+    if(!recs.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📭</div>No records found</div></td></tr>';return;}
+    body.innerHTML=recs.map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'<span style="color:var(--teal)">Active</span>'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join('');
   }
 
   /* ── Leave balances ── */
@@ -2024,7 +2036,7 @@ class App{
   _bdg(s){if(!s)return'';if(s==='Active')return'<span class="badge b-active">● Active</span>';if(s.includes('Early'))return`<span class="badge b-early">⚠ Early</span>`;return'<span class="badge b-ok">✓ Done</span>';}
   exportCSV(mode){
     let recs=this.records.slice();
-    if(mode==='staff')recs=recs.filter(r=>r.id===this.user.id);
+    if(mode==='staff'||mode==='mgr-my')recs=recs.filter(r=>r.id===this.user.id);
     let csv='Date,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';
     recs.forEach(r=>{csv+=`"${r.date}","${r.id}","${r.name}","${r.unit}","${new Date(r.in).toLocaleString()}","${r.out?new Date(r.out).toLocaleString():'--'}","${r.hours||'--'}","${r.status}"\n`;});
     this._dl(csv,'THP_Attendance_'+Date.now()+'.csv','text/csv');
