@@ -305,6 +305,7 @@
       <button class="nav-item active" onclick="showPanel('m-dash','sb-mgr',event)"><span class="ico">📊</span>Dashboard</button>
       <button class="nav-item"        onclick="showPanel('m-clock','sb-mgr',event)"><span class="ico">⏱</span>Clock In / Out</button>
       <button class="nav-item"        onclick="showPanel('m-recs','sb-mgr',event)"><span class="ico">📋</span>Team Records</button>
+      <button class="nav-item"        onclick="showPanel('m-mylogs','sb-mgr',event);APP.renderMgrMyLogs()"><span class="ico">📝</span>My Logs</button>
       <button class="nav-item"        onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave()"><span class="ico">🌴</span>My Leave</button>
       <button class="nav-item" id="nav-mgr-leave" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave()"><span class="ico">🏖</span><span id="nav-mgr-leave-text">Leave Review</span><span class="notif-badge" id="badge-mgr-leave"></span></button>
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
@@ -419,6 +420,15 @@
           <div class="scr"><table id="mgr-table"><thead><tr><th class="sortable" onclick="APP.sortTable('mgr','date')">Date</th><th class="sortable" onclick="APP.sortTable('mgr','name')">Name</th><th>In</th><th>Out</th><th class="sortable" onclick="APP.sortTable('mgr','hours')">Hours</th><th class="sortable" onclick="APP.sortTable('mgr','status')">Status</th></tr></thead><tbody id="mgr-recs-body"></tbody></table></div>
         </div>
       </div>
+      <!-- My Logs (personal attendance for managers) -->
+      <div id="m-mylogs" class="panel">
+        <div class="pg-hdr"><h2>My Attendance Logs</h2><p>Your personal attendance history</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Records</h4><div class="t-btns"><input class="fi" type="month" id="mgr-my-mth" oninput="APP.renderMgrMyLogs()" style="width:130px"><button class="bsm bsm-navy" onclick="APP.exportCSV('mgr-my')">📊 Export</button></div></div>
+          <div class="results-bar"><span>Showing <strong id="mgr-my-count">0</strong> records</span></div>
+          <div class="scr"><table><thead><tr><th>Date</th><th>Unit</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody id="mgr-my-logs-body"></tbody></table></div>
+        </div>
+      </div>
       <div id="m-leave" class="panel">
         <div class="pg-hdr"><h2 id="mgr-leave-title">Leave Review</h2><p id="mgr-leave-subtitle">Review leave requests from your team — your decision forwards them to the Country Leader for final sign-off</p></div>
         <div class="tcard">
@@ -507,11 +517,12 @@
     <div class="mob-tabs">
       <button class="mob-tab active" onclick="showPanel('m-dash','sb-mgr',event);APP._setMobTab('mob-nav-mgr',0)"><span class="mico">📊</span>Dash</button>
       <button class="mob-tab" onclick="showPanel('m-clock','sb-mgr',event);APP._setMobTab('mob-nav-mgr',1)"><span class="mico">⏱</span>Clock</button>
-      <button class="mob-tab" onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave();APP._setMobTab('mob-nav-mgr',2)"><span class="mico">🌴</span>Leave</button>
-      <button class="mob-tab" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave();APP._setMobTab('mob-nav-mgr',3)"><span class="mico">🏖</span><span class="mob-notif" id="mob-badge-mgr-leave"></span><span id="mob-mgr-leave-text">Review</span></button>
-      <button class="mob-tab" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory();APP._setMobTab('mob-nav-mgr',4)"><span class="mico">📒</span>History</button>
-      <button class="mob-tab" id="mob-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport();APP._setMobTab('mob-nav-mgr',5)"><span class="mico">📈</span>Reports</button>
-      <button class="mob-tab" onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-');APP._setMobTab('mob-nav-mgr',6)"><span class="mico">👤</span>Profile</button>
+      <button class="mob-tab" onclick="showPanel('m-mylogs','sb-mgr',event);APP.renderMgrMyLogs();APP._setMobTab('mob-nav-mgr',2)"><span class="mico">📝</span>Logs</button>
+      <button class="mob-tab" onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave();APP._setMobTab('mob-nav-mgr',3)"><span class="mico">🌴</span>Leave</button>
+      <button class="mob-tab" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave();APP._setMobTab('mob-nav-mgr',4)"><span class="mico">🏖</span><span class="mob-notif" id="mob-badge-mgr-leave"></span><span id="mob-mgr-leave-text">Review</span></button>
+      <button class="mob-tab" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory();APP._setMobTab('mob-nav-mgr',5)"><span class="mico">📒</span>History</button>
+      <button class="mob-tab" id="mob-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport();APP._setMobTab('mob-nav-mgr',6)"><span class="mico">📈</span>Reports</button>
+      <button class="mob-tab" onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-');APP._setMobTab('mob-nav-mgr',7)"><span class="mico">👤</span>Profile</button>
     </div>
   </nav>
 </section>
