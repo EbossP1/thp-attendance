@@ -963,7 +963,7 @@ class App{
       setTimeout(()=>{
         this.renderAdmin();this._renderDash();this._renderStaffGrid();this._renderReports();this.renderAdminLeave();this._updateNotifBadges();
         this._populateSupervisorDropdown();this._initEntQR();this.renderAdminHolidays();
-        if($('script-url-input')&&API.getUrl())$('script-url-input').value=API.getUrl();
+        if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
         hideLoader();
       },100);
       API.updateChips();
@@ -982,6 +982,9 @@ class App{
         this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
+        // Show delegation nav only for Country Leader
+        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.style.display='';}
+        this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
       },100);
@@ -995,6 +998,7 @@ class App{
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
+        this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('p-chpw','sb-staff',null),400);setTimeout(()=>toast(isTempPass?'🔐 You logged in with a temporary password. Please set a new one now.':'⚠️ Please change your default password.','info'),1500);}
         hideLoader();
       },100);
@@ -1262,7 +1266,7 @@ class App{
     $('st-leave-bal').innerHTML=`<h4>Leave Balances (${new Date().getFullYear()})</h4>`+
       types.map(t=>{
         const limit=LEAVE_LIMITS[t];const used=this._leaveDaysUsed(this.user.id,t);
-        if(limit===null)return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div style="font-size:.72rem;color:var(--text2)">As certified by medical professional</div></div><div class="bal-num">${used} days used</div></div>`;
+        if(limit===null){const sub=t==='Compensatory Leave'?'As certified by Country Leader':'As certified by medical professional';return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div style="font-size:.72rem;color:var(--text2)">${sub}</div></div><div class="bal-num">${used} days used</div></div>`;}
         const rem=Math.max(0,limit-used);const pct=Math.round((used/limit)*100);
         return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct>85?'var(--red)':pct>60?'var(--gold)':'var(--green)'}"></div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
       }).join('');
@@ -1358,7 +1362,7 @@ class App{
     el.innerHTML=`<h4>Leave Balances (${new Date().getFullYear()})</h4>`+
       types.map(t=>{
         const limit=LEAVE_LIMITS[t];const used=this._leaveDaysUsed(this.user.id,t);
-        if(limit===null)return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div></div><div class="bal-num">${used} used</div></div>`;
+        if(limit===null){const sub=t==='Compensatory Leave'?'As certified by Country Leader':'As certified by medical professional';return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div style="font-size:.72rem;color:var(--text2)">${sub}</div></div><div class="bal-num">${used} used</div></div>`;}
         const rem=Math.max(0,limit-used);const pct=Math.round((used/limit)*100);
         return`<div class="bal-row"><div class="bal-icon">${icons[t]||'📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct>85?'var(--red)':pct>60?'var(--gold)':'var(--green)'}"></div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
       }).join('');
@@ -2325,9 +2329,10 @@ class App{
     }catch(e){return null;}
   }
 
-  async renderDelegation(){
-    const statusEl=$('deleg-status');
-    const sel=$('deleg-person');
+  async renderDelegation(prefix){
+    const p=prefix||'';
+    const statusEl=$(p+'deleg-status')||$('deleg-status');
+    const sel=$(p+'deleg-person')||$('deleg-person');
     if(!sel)return;
 
     // Populate delegate dropdown with managers
@@ -2345,51 +2350,102 @@ class App{
       const delegName=this.staff[deleg.delegateId]?.name||deleg.delegateId;
       const now=new Date().toISOString().slice(0,10);
       const isActive=now>=deleg.startDate&&now<=deleg.endDate;
-      statusEl.innerHTML=`<span style="color:${isActive?'var(--green)':'var(--gold)'}">● ${isActive?'Active':'Scheduled'} Delegation</span><br>
+      if(statusEl)statusEl.innerHTML=`<span style="color:${isActive?'var(--green)':'var(--gold)'}">● ${isActive?'Active':'Scheduled'} Delegation</span><br>
         <strong>${delegName}</strong> can approve leave on behalf of the Country Leader<br>
         <span style="font-size:.76rem;color:var(--text3)">${fmtISO(deleg.startDate)} → ${fmtISO(deleg.endDate)}</span>`;
       sel.value=deleg.delegateId;
-      $('deleg-start').value=deleg.startDate;
-      $('deleg-end').value=deleg.endDate;
+      const startEl=$(p+'deleg-start')||$('deleg-start');if(startEl)startEl.value=deleg.startDate;
+      const endEl=$(p+'deleg-end')||$('deleg-end');if(endEl)endEl.value=deleg.endDate;
     } else {
       localStorage.removeItem('thp_delegation');
-      statusEl.innerHTML='<span style="color:var(--text3)">● No active delegation</span><br><span style="font-size:.78rem">The Country Leader is currently the sole final approver for all leave requests.</span>';
+      if(statusEl)statusEl.innerHTML='<span style="color:var(--text3)">● No active delegation</span><br><span style="font-size:.78rem">The Country Leader is currently the sole final approver for all leave requests.</span>';
     }
   }
 
-  async saveDelegation(){
-    const delegateId=$('deleg-person')?.value;
-    const startDate=$('deleg-start')?.value;
-    const endDate=$('deleg-end')?.value;
-    const msg=$('deleg-msg');
-    if(!delegateId)return msg.innerHTML='<span style="color:var(--red)">Select a manager.</span>';
-    if(!startDate||!endDate)return msg.innerHTML='<span style="color:var(--red)">Set start and end dates.</span>';
-    if(new Date(endDate)<new Date(startDate))return msg.innerHTML='<span style="color:var(--red)">End date before start date.</span>';
+  async saveDelegation(prefix){
+    const p=prefix||'';
+    const delegateId=($(p+'deleg-person')||$('deleg-person'))?.value;
+    const startDate=($(p+'deleg-start')||$('deleg-start'))?.value;
+    const endDate=($(p+'deleg-end')||$('deleg-end'))?.value;
+    const msg=$(p+'deleg-msg')||$('deleg-msg');
+    if(!delegateId){if(msg)msg.innerHTML='<span style="color:var(--red)">Select a manager.</span>';return;}
+    if(!startDate||!endDate){if(msg)msg.innerHTML='<span style="color:var(--red)">Set start and end dates.</span>';return;}
+    if(new Date(endDate)<new Date(startDate)){if(msg)msg.innerHTML='<span style="color:var(--red)">End date before start date.</span>';return;}
 
     const deleg={active:true,delegateId,startDate,endDate,updatedAt:new Date().toISOString()};
-    msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    if(msg)msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
     await API._upsert('settings',[{key:'cl_delegation',value:JSON.stringify(deleg),updated_at:new Date().toISOString()}]);
     localStorage.setItem('thp_delegation',JSON.stringify(deleg));
 
-    // Notify the delegate via email
     const delegName=this.staff[delegateId]?.name||'';
     const delegEmail=this.staff[delegateId]?.email||'';
     if(delegEmail){
       API.gasPost({action:'delegationNotify',delegateName:delegName,delegateEmail:delegEmail,startDate,endDate,active:true}).catch(()=>{});
     }
 
-    this.renderDelegation();
-    msg.innerHTML='<span style="color:var(--green)">✓ Delegation activated!</span>';
+    this.renderDelegation(prefix);
+    if(msg)msg.innerHTML='<span style="color:var(--green)">✓ Delegation activated!</span>';
     toast(`${delegName} can now approve leave as delegate.`);
   }
 
-  async deactivateDelegation(){
+  async deactivateDelegation(prefix){
     if(!confirm('Deactivate the current delegation?'))return;
     const deleg={active:false,delegateId:'',startDate:'',endDate:'',updatedAt:new Date().toISOString()};
     await API._upsert('settings',[{key:'cl_delegation',value:JSON.stringify(deleg),updated_at:new Date().toISOString()}]);
     localStorage.removeItem('thp_delegation');
-    this.renderDelegation();
+    this.renderDelegation(prefix);
     toast('Delegation deactivated.');
+  }
+
+  /* ═══════════════════════════════════════════
+     AUTO CLOCK-OUT AT MIDNIGHT
+     Runs every 60s — if it's past midnight and
+     user has an active session, auto-clock-out.
+  ═══════════════════════════════════════════ */
+  _startAutoClockOut(){
+    setInterval(()=>{
+      if(!this.user)return;
+      const now=new Date();
+      const rec=this.records.find(r=>r.id===this.user.id&&!r.out);
+      if(!rec)return;
+      const clockInDate=new Date(rec.in).toISOString().slice(0,10);
+      const todayDate=now.toISOString().slice(0,10);
+      if(clockInDate!==todayDate){
+        // It's past midnight — auto clock out at 23:59:59 of clock-in day
+        const midnight=new Date(clockInDate+'T23:59:59');
+        const hrs=(midnight-new Date(rec.in))/3600000;
+        rec.out=midnight.toISOString();rec.hours=fx(hrs);rec.status='Auto Clock-Out (Midnight)';
+        API.updateRecord(rec).then(()=>{
+          this._cacheR();
+          const p=this._pfx();
+          if($(p+'btn-co'))$(p+'btn-co').disabled=true;
+          this._sess(false);this._stats();
+          toast('⏰ Auto-clocked out at midnight.','info');
+        });
+      }
+    },60000);
+  }
+
+  /* ═══════════════════════════════════════════
+     MORNING CLOCK-IN REMINDER
+     Checks once at login/restore — if it's a
+     working day and user hasn't clocked in by
+     9:30 AM, shows a toast reminder.
+  ═══════════════════════════════════════════ */
+  _checkClockInReminder(){
+    if(!this.user||this.user.role==='admin')return;
+    const now=new Date();
+    if(isWeekend(now)||isHoliday(now))return;
+    const hour=now.getHours(),min=now.getMinutes();
+    if(hour<8||(hour===8&&min<30))return; // Too early, no reminder yet
+    if(hour>12)return; // Past noon, don't nag
+    const todayStr=todayISO();
+    const onLeave=leaveOnDate(this.leave,this.user.id,todayStr);
+    if(onLeave)return;
+    const alreadyIn=this.records.find(r=>r.id===this.user.id&&((r.date||r.in||'').slice(0,10)===todayStr||(r.in&&new Date(r.in).toISOString().slice(0,10)===todayStr)));
+    if(!alreadyIn){
+      setTimeout(()=>toast('⏰ Reminder: You haven\'t clocked in today.','info'),2000);
+    }
   }
 }
 
@@ -2462,6 +2518,8 @@ const APP=new App();
         APP._sessCheck();APP._initWorkModeListeners();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
+        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.style.display='';}
+        APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
     } else {
@@ -2474,6 +2532,7 @@ const APP=new App();
         APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._initWorkModeListeners();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
+        APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
     }
