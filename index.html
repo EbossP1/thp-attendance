@@ -135,8 +135,25 @@
             <span class="sess-badge sess-off" id="sess-badge"><span class="dot"></span><span id="sess-txt">Signed Out</span></span>
             <div class="ctrl-row">
               <div class="unit-display" id="unit-display"></div>
+              <select id="work-mode" class="dept-sel" style="min-width:130px;margin-right:.4rem">
+                <option value="Office">🏢 Office</option>
+                <option value="Home">🏠 Work from Home</option>
+                <option value="Field">🌍 Field</option>
+                <option value="Work Trip">✈️ Work Trip</option>
+              </select>
               <button id="btn-ci" class="btn-in"  onclick="APP.clockIn()">Clock In</button>
               <button id="btn-co" class="btn-out" onclick="APP.clockOut()" disabled>Clock Out</button>
+            </div>
+            <!-- Work Trip auto-attend panel -->
+            <div id="trip-panel" style="display:none;margin-top:.7rem;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.8rem 1rem">
+              <h4 style="margin:0 0 .5rem 0;font-size:.88rem">✈️ Register Work Trip</h4>
+              <p style="font-size:.76rem;color:var(--text2);margin-bottom:.6rem">You will be auto-marked present for the duration of the trip (no daily clock-in needed).</p>
+              <div class="form-row" style="gap:.5rem">
+                <div class="field"><label>Trip Start</label><input type="date" id="trip-start"></div>
+                <div class="field"><label>Trip End</label><input type="date" id="trip-end"></div>
+              </div>
+              <div class="field"><label>Destination / Purpose</label><input type="text" id="trip-dest" placeholder="e.g. Tamale — Monitoring visit"></div>
+              <button class="btn-add" style="margin-top:.4rem" onclick="APP.registerWorkTrip()">Register Trip &amp; Auto-Mark Attendance</button>
             </div>
           </div>
         </div>
@@ -188,6 +205,7 @@
             <div class="ltype-card ltype-female" data-type="Maternity Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">👶</div><div class="ltype-name">Maternity</div><div class="ltype-days">~3 months</div></div>
             <div class="ltype-card ltype-male"   data-type="Paternity Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">👨‍👶</div><div class="ltype-name">Paternity</div><div class="ltype-days">5 days</div></div>
             <div class="ltype-card"     data-type="Compassionate Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">🕊</div><div class="ltype-name">Compassionate</div><div class="ltype-days">5 days</div></div>
+            <div class="ltype-card"     data-type="Compensatory Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">⏰</div><div class="ltype-name">Compensatory</div><div class="ltype-days">For extra days worked</div></div>
           </div>
           <div class="form-row">
             <div class="field"><label>Start Date</label><input type="date" id="lv-start" onchange="APP.calcLeaveDays()"></div>
@@ -196,7 +214,13 @@
           <div id="lv-days-preview" style="display:none;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.6rem 1rem;margin-bottom:.8rem;font-size:.83rem;">
             <span style="color:var(--text2)">Working days (excl. weekends &amp; holidays):</span> <strong id="lv-days-count" style="color:var(--teal)">0</strong>
           </div>
+          <!-- Compensatory reference dates -->
+          <div id="lv-comp-dates" style="display:none">
+            <div class="field"><label>Dates Worked (weekends/holidays you worked)</label><input type="text" id="lv-comp-ref" placeholder="e.g. Sat 15 Mar, Sun 16 Mar 2026"></div>
+          </div>
           <div class="field"><label>Reason / Notes</label><textarea id="lv-reason" placeholder="Briefly describe the reason for your leave request…"></textarea></div>
+          <!-- Handover Note -->
+          <div class="field"><label>Handover Note <span style="font-size:.72rem;color:var(--text3)">(optional — your supervisor can download this)</span></label><textarea id="lv-handover" placeholder="Key tasks, contacts, pending items your team needs to cover…" style="min-height:70px"></textarea></div>
           <!-- Supervisor + Final Approver row — hidden for direct-to-CL staff -->
           <div id="lv-routing-block">
             <div class="field" id="lv-supervisor-field">
@@ -334,6 +358,7 @@
             <div class="ltype-card ltype-female" data-type="Maternity Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">👶</div><div class="ltype-name">Maternity</div><div class="ltype-days">~3 months</div></div>
             <div class="ltype-card ltype-male"   data-type="Paternity Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">👨‍👶</div><div class="ltype-name">Paternity</div><div class="ltype-days">5 days</div></div>
             <div class="ltype-card"     data-type="Compassionate Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">🕊</div><div class="ltype-name">Compassionate</div><div class="ltype-days">5 days</div></div>
+            <div class="ltype-card"     data-type="Compensatory Leave" onclick="APP.selectLeave(this)"><div class="ltype-icon">⏰</div><div class="ltype-name">Compensatory</div><div class="ltype-days">For extra days worked</div></div>
           </div>
           <div class="form-row">
             <div class="field"><label>Start Date</label><input type="date" id="mlv-start" onchange="APP.calcLeaveDays()"></div>
@@ -342,7 +367,13 @@
           <div id="mlv-days-preview" style="display:none;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.6rem 1rem;margin-bottom:.8rem;font-size:.83rem;">
             <span style="color:var(--text2)">Working days (excl. weekends &amp; holidays):</span> <strong id="mlv-days-count" style="color:var(--teal)">0</strong>
           </div>
+          <!-- Compensatory reference dates -->
+          <div id="mlv-comp-dates" style="display:none">
+            <div class="field"><label>Dates Worked (weekends/holidays you worked)</label><input type="text" id="mlv-comp-ref" placeholder="e.g. Sat 15 Mar, Sun 16 Mar 2026"></div>
+          </div>
           <div class="field"><label>Reason / Notes</label><textarea id="mlv-reason" placeholder="Briefly describe the reason for your leave request…"></textarea></div>
+          <!-- Handover Note -->
+          <div class="field"><label>Handover Note <span style="font-size:.72rem;color:var(--text3)">(optional — your supervisor can download this)</span></label><textarea id="mlv-handover" placeholder="Key tasks, contacts, pending items your team needs to cover…" style="min-height:70px"></textarea></div>
           <div id="mlv-sick-upload" style="display:none">
             <div class="field">
               <label>Medical Certificate <span style="color:var(--red)">*</span></label>
@@ -370,8 +401,25 @@
             <span class="sess-badge sess-off" id="m-sess-badge"><span class="dot"></span><span id="m-sess-txt">Signed Out</span></span>
             <div class="ctrl-row">
               <div class="unit-display" id="m-unit-display"></div>
+              <select id="m-work-mode" class="dept-sel" style="min-width:130px;margin-right:.4rem">
+                <option value="Office">🏢 Office</option>
+                <option value="Home">🏠 Work from Home</option>
+                <option value="Field">🌍 Field</option>
+                <option value="Work Trip">✈️ Work Trip</option>
+              </select>
               <button id="m-btn-ci" class="btn-in"  onclick="APP.clockIn()">Clock In</button>
               <button id="m-btn-co" class="btn-out" onclick="APP.clockOut()" disabled>Clock Out</button>
+            </div>
+            <!-- Work Trip auto-attend panel (manager) -->
+            <div id="m-trip-panel" style="display:none;margin-top:.7rem;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.8rem 1rem">
+              <h4 style="margin:0 0 .5rem 0;font-size:.88rem">✈️ Register Work Trip</h4>
+              <p style="font-size:.76rem;color:var(--text2);margin-bottom:.6rem">You will be auto-marked present for the duration of the trip (no daily clock-in needed).</p>
+              <div class="form-row" style="gap:.5rem">
+                <div class="field"><label>Trip Start</label><input type="date" id="m-trip-start"></div>
+                <div class="field"><label>Trip End</label><input type="date" id="m-trip-end"></div>
+              </div>
+              <div class="field"><label>Destination / Purpose</label><input type="text" id="m-trip-dest" placeholder="e.g. Tamale — Monitoring visit"></div>
+              <button class="btn-add" style="margin-top:.4rem" onclick="APP.registerWorkTrip()">Register Trip &amp; Auto-Mark Attendance</button>
             </div>
           </div>
         </div>
@@ -543,6 +591,7 @@
       <button class="nav-item" onclick="showPanel('a-rep','sb-admin',event)"><span class="ico">📈</span>Reports</button>
       <button class="nav-item" onclick="showPanel('a-ent','sb-admin',event)"><span class="ico">🔲</span>Entrance QR</button>
       <button class="nav-item" onclick="showPanel('a-holidays','sb-admin',event)"><span class="ico">📅</span>Holidays</button>
+      <button class="nav-item" onclick="showPanel('a-delegation','sb-admin',event);APP.renderDelegation()"><span class="ico">🔄</span>CL Delegation</button>
       <button class="nav-item" onclick="showPanel('a-sync','sb-admin',event)"><span class="ico">☁️</span>Google Sheets</button>
       <button class="nav-item" onclick="showPanel('a-chpw','sb-admin',event)"><span class="ico">🔑</span>Password</button>
       <div class="sb-bottom">
@@ -653,6 +702,29 @@
         <div class="pg-hdr"><h2>Entrance QR Code</h2><p>Print and place at the office entrance</p></div>
         <div class="url-bar"><label>🌐 Hosted URL</label><input type="text" id="hosted-url" placeholder="https://thp-ghana.github.io/attendance"><button class="btn-gen" onclick="APP.genEntrance()">Generate QR</button></div>
         <div class="ent-wrap"><div class="ent-inner"><h3>THP-Ghana Staff Attendance</h3><p>Scan with your phone camera to clock in or out</p><div class="ent-frame" id="ent-qr-box"></div><div class="ent-url" id="ent-url-txt">Enter your hosted URL above</div><div class="ent-btns"><button class="btn-teal" onclick="APP.dlQR('ent-qr-box','THP_Entrance_QR')">⬇ Download</button><button class="btn-ghost" onclick="window.print()">🖨 Print</button></div></div></div>
+      </div>
+      <!-- CL Delegation -->
+      <div id="a-delegation" class="panel">
+        <div class="pg-hdr"><h2>Country Leader Delegation</h2><p>Allow someone to approve leave on the Country Leader's behalf when she is out of office</p></div>
+        <div class="add-card" style="max-width:560px">
+          <h4>🔄 Delegation Settings</h4>
+          <div id="deleg-status" style="background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.8rem 1rem;margin-bottom:1rem;font-size:.84rem"></div>
+          <div class="field">
+            <label>Delegate To</label>
+            <select id="deleg-person">
+              <option value="">— Select a manager —</option>
+            </select>
+          </div>
+          <div class="form-row" style="gap:.5rem">
+            <div class="field"><label>Delegation Start</label><input type="date" id="deleg-start"></div>
+            <div class="field"><label>Delegation End</label><input type="date" id="deleg-end"></div>
+          </div>
+          <div id="deleg-msg" style="min-height:18px;font-size:.82rem;margin-top:.4rem"></div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem">
+            <button class="btn-add" onclick="APP.saveDelegation()">💾 Activate Delegation</button>
+            <button class="btn-add" style="background:linear-gradient(135deg,#3a1a1a,#ef4444)" onclick="APP.deactivateDelegation()">✗ Deactivate</button>
+          </div>
+        </div>
       </div>
       <!-- Google Sheets -->
       <div id="a-sync" class="panel">
