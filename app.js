@@ -982,7 +982,6 @@ class App{
         this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
-        // Show delegation nav only for Country Leader
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.style.display='';}
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
@@ -2377,6 +2376,7 @@ class App{
     await API._upsert('settings',[{key:'cl_delegation',value:JSON.stringify(deleg),updated_at:new Date().toISOString()}]);
     localStorage.setItem('thp_delegation',JSON.stringify(deleg));
 
+    // Notify the delegate via email
     const delegName=this.staff[delegateId]?.name||'';
     const delegEmail=this.staff[delegateId]?.email||'';
     if(delegEmail){
@@ -2399,8 +2399,6 @@ class App{
 
   /* ═══════════════════════════════════════════
      AUTO CLOCK-OUT AT MIDNIGHT
-     Runs every 60s — if it's past midnight and
-     user has an active session, auto-clock-out.
   ═══════════════════════════════════════════ */
   _startAutoClockOut(){
     setInterval(()=>{
@@ -2411,7 +2409,6 @@ class App{
       const clockInDate=new Date(rec.in).toISOString().slice(0,10);
       const todayDate=now.toISOString().slice(0,10);
       if(clockInDate!==todayDate){
-        // It's past midnight — auto clock out at 23:59:59 of clock-in day
         const midnight=new Date(clockInDate+'T23:59:59');
         const hrs=(midnight-new Date(rec.in))/3600000;
         rec.out=midnight.toISOString();rec.hours=fx(hrs);rec.status='Auto Clock-Out (Midnight)';
@@ -2428,17 +2425,14 @@ class App{
 
   /* ═══════════════════════════════════════════
      MORNING CLOCK-IN REMINDER
-     Checks once at login/restore — if it's a
-     working day and user hasn't clocked in by
-     9:30 AM, shows a toast reminder.
   ═══════════════════════════════════════════ */
   _checkClockInReminder(){
     if(!this.user||this.user.role==='admin')return;
     const now=new Date();
     if(isWeekend(now)||isHoliday(now))return;
     const hour=now.getHours(),min=now.getMinutes();
-    if(hour<8||(hour===8&&min<30))return; // Too early, no reminder yet
-    if(hour>12)return; // Past noon, don't nag
+    if(hour<8||(hour===8&&min<30))return;
+    if(hour>12)return;
     const todayStr=todayISO();
     const onLeave=leaveOnDate(this.leave,this.user.id,todayStr);
     if(onLeave)return;
