@@ -335,7 +335,7 @@
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
       <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
-      <button class="nav-item" id="nav-mgr-deleg" style="display:none" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation()"><span class="ico">🔄</span>Delegation</button>
+      <button class="nav-item" id="nav-mgr-deleg" style="display:none" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
       <div class="sb-bottom">
         <div class="sync-pill no-url" id="mgr-sync-chip">⬤ Local only</div>
@@ -535,7 +535,7 @@
           <button class="btn-add" onclick="APP.saveProfile('m-')">💾 Save Profile</button>
         </div>
       </div>
-      <!-- CL Delegation (manager view — visible only for Country Leader) -->
+      <!-- CL Delegation (visible only for Country Leader) -->
       <div id="m-delegation" class="panel">
         <div class="pg-hdr"><h2>Leave Approval Delegation</h2><p>Allow someone to approve leave on your behalf when you are out of office</p></div>
         <div class="add-card" style="max-width:560px">
