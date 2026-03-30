@@ -270,7 +270,8 @@ const API={
     this.showBar('syncing','Saving…');
     const r=await this._insert('attendance',{
       date:rec.date,staff_id:rec.id,name:rec.name,unit:(rec.unit||'').trim(),
-      clock_in:rec.in,clock_out:rec.out||null,hours:rec.hours||null,status:rec.status||'Active'
+      clock_in:rec.in,clock_out:rec.out||null,hours:rec.hours||null,status:rec.status||'Active',
+      work_mode:rec.work_mode||'Office'
     });
     if(r){this.showBar('synced','Saved ✓');return{success:true};}
     this.showBar('error','Save failed');return{success:false};
@@ -326,7 +327,8 @@ const API={
       supervisor_id:leave.supervisorId||'',supervisor_status:leave.supervisorStatus||'Pending',
       final_approver_id:leave.finalApproverId||'',
       final_approver_status:leave.finalApproverStatus||'Waiting',
-      overall_status:leave.status||'Pending'
+      overall_status:leave.status||'Pending',
+      handover_note:leave.handoverNote||'',comp_ref:leave.compRef||''
     });
     if(!r)return{success:false};
     // Trigger email notification via GAS — include all recipient emails
@@ -524,7 +526,8 @@ const API={
     // Transform attendance rows
     const records=(attRows||[]).map(r=>({
       date:r.date,id:r.staff_id,name:r.name,unit:r.unit,
-      in:r.clock_in,out:r.clock_out||null,hours:r.hours||null,status:r.status||'Active'
+      in:r.clock_in,out:r.clock_out||null,hours:r.hours||null,status:r.status||'Active',
+      work_mode:r.work_mode||'Office'
     }));
 
     // Transform leave rows
@@ -535,7 +538,8 @@ const API={
       supervisorId:r.supervisor_id||'',supervisorStatus:r.supervisor_status||'Pending',supervisorNote:r.supervisor_note||'',
       finalApproverId:r.final_approver_id||'',finalApproverStatus:r.final_approver_status||'Pending',finalApproverNote:r.final_approver_note||'',
       status:r.overall_status||'Pending',hrStatus:r.final_approver_status||r.overall_status||'Pending',hrNote:r.final_approver_note||'',
-      appliedAt:r.applied_at||'',updatedAt:r.updated_at||''
+      appliedAt:r.applied_at||'',updatedAt:r.updated_at||'',
+      handoverNote:r.handover_note||'',compRef:r.comp_ref||''
     }));
 
     // Transform holidays
@@ -762,7 +766,7 @@ function leaveOnDate(leaveArr,staffId,dateStr){
 /* ═══════════════════════════════════════════════
    6. LEAVE CONFIGURATION & HELPERS
 ═══════════════════════════════════════════════ */
-const LEAVE_LIMITS={'Annual Leave':24,'Sick Leave':null,'Maternity Leave':65,'Paternity Leave':5,'Compassionate Leave':5};
+const LEAVE_LIMITS={'Annual Leave':24,'Sick Leave':null,'Maternity Leave':65,'Paternity Leave':5,'Compassionate Leave':5,'Compensatory Leave':null};
 function _leaveProgress(lv){
   let score=0;
   if(lv.supervisorStatus==='Approved')score+=2;
@@ -975,9 +979,9 @@ class App{
         const av=$('mgr-av');if(av){av.textContent=ini(this.user.name);av.style.background=this.user.color||avColor(this.user.name);}
         const mav=$('mob-mgr-av');if(mav){mav.textContent=ini(this.user.name);mav.style.background=this.user.color||avColor(this.user.name);}
         const mn=$('mob-mgr-name');if(mn)mn.textContent=this.user.name;
-        this._sessCheck();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
+        this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
-        this._checkDefaultPass('mgr');this._renderProfileForm('m-');
+        this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
       },100);
@@ -988,7 +992,7 @@ class App{
         const av=$('st-av');if(av){av.textContent=ini(this.user.name);av.style.background=this.user.color||avColor(this.user.name);}
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(this.user.name);mav.style.background=this.user.color||avColor(this.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=this.user.name;
-        this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
+        this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
         if(isDefault||isTempPass){setTimeout(()=>showPanel('p-chpw','sb-staff',null),400);setTimeout(()=>toast(isTempPass?'🔐 You logged in with a temporary password. Please set a new one now.':'⚠️ Please change your default password.','info'),1500);}
@@ -1089,8 +1093,28 @@ class App{
 
   /* ── Clock in/out — SERVER FIRST ── */
   _pfx(){return isManagerRole(this.user?.role)?'m-':'';}
+
+  /* ── Work mode change handler — show/hide trip panel ── */
+  _initWorkModeListeners(){
+    const p=this._pfx();
+    const sel=$(p+'work-mode');if(!sel)return;
+    sel.addEventListener('change',()=>{
+      const tp=$(p+'trip-panel');
+      if(tp)tp.style.display=sel.value==='Work Trip'?'block':'none';
+    });
+  }
+
   async clockIn(){
     const now=new Date();
+    const p=this._pfx();
+    const workMode=$(p+'work-mode')?.value||'Office';
+
+    // Work Trip mode — redirect to trip registration
+    if(workMode==='Work Trip'){
+      const tp=$(p+'trip-panel');if(tp)tp.style.display='block';
+      return toast('Fill in your trip dates below and register.','info');
+    }
+
     if(isWeekend(now))return toast('Not allowed on weekends.','err');
     if(isHoliday(now)){const hName=getHolidayName(now);return toast(`Today is a public holiday${hName?' — '+hName:''}.`,'info');}
     if(this.records.find(r=>r.id===this.user.id&&!r.out))return toast('Already clocked in','err');
@@ -1101,15 +1125,54 @@ class App{
     if(onLeave)return toast(`On approved ${onLeave.type} today.`,'info');
 
     const unit=(this.user.unit||'').trim();
-    const rec={date:fmtD(now.toISOString()),id:this.user.id,name:this.user.name,unit,in:now.toISOString(),out:null,hours:null,status:'Active'};
+    const rec={date:fmtD(now.toISOString()),id:this.user.id,name:this.user.name,unit,in:now.toISOString(),out:null,hours:null,status:'Active',work_mode:workMode};
 
     /* SERVER FIRST */
     const result=await API.saveRecord(rec);
     if(!result||!result.success){toast('Server error — try again','err');return;}
 
     this.records.push(rec);this._cacheR();
-    const p=this._pfx();$(p+'btn-ci').disabled=true;$(p+'btn-co').disabled=false;this._sess(true);this._stats();
-    toast('Clocked in at '+fmtT(now.toISOString()));
+    $(p+'btn-ci').disabled=true;$(p+'btn-co').disabled=false;this._sess(true);this._stats();
+    const modeLabel=workMode==='Office'?'':'('+workMode+') ';
+    toast('Clocked in '+modeLabel+'at '+fmtT(now.toISOString()));
+  }
+
+  /* ── Register Work Trip — auto-marks attendance for entire trip duration ── */
+  async registerWorkTrip(){
+    const p=this._pfx();
+    const startDate=$(p+'trip-start')?.value;
+    const endDate=$(p+'trip-end')?.value;
+    const dest=$(p+'trip-dest')?.value.trim()||'Work Trip';
+    if(!startDate||!endDate)return toast('Select trip start and end dates.','err');
+    if(new Date(endDate)<new Date(startDate))return toast('End date before start date.','err');
+
+    const unit=(this.user.unit||'').trim();
+    const days=[];
+    const cur=new Date(startDate);
+    const end=new Date(endDate);
+    while(cur<=end){days.push(new Date(cur));cur.setDate(cur.getDate()+1);}
+    if(!days.length)return toast('No days in range.','err');
+
+    toast(`Registering ${days.length} trip day(s)…`,'info');
+    let added=0;
+    for(const day of days){
+      const dayISO=day.toISOString().slice(0,10);
+      const already=this.records.find(r=>r.id===this.user.id&&((r.date||r.in||'').slice(0,10)===dayISO||(r.in&&new Date(r.in).toISOString().slice(0,10)===dayISO)));
+      if(already)continue;
+      const clockIn=new Date(day);clockIn.setHours(8,0,0,0);
+      const clockOut=new Date(day);clockOut.setHours(17,0,0,0);
+      const rec={date:fmtD(clockIn.toISOString()),id:this.user.id,name:this.user.name,unit,
+        in:clockIn.toISOString(),out:clockOut.toISOString(),hours:'9.00',
+        status:'Completed (Work Trip — '+dest+')',work_mode:'Work Trip'};
+      const r=await API.saveRecord(rec);
+      if(r&&r.success){this.records.push(rec);added++;}
+    }
+    this._cacheR();this._stats();
+    if(isManagerRole(this.user.role))this.renderMgrRecs();else this.renderStaffLogs();
+    $(p+'trip-panel').style.display='none';
+    $(p+'trip-start').value='';$(p+'trip-end').value='';$(p+'trip-dest').value='';
+    $(p+'work-mode').value='Office';
+    toast(`✈️ Work trip registered! ${added} day(s) auto-marked as present.`);
   }
   clockOut(){
     const rec=this.records.find(r=>r.id===this.user.id&&!r.out);if(!rec)return;
@@ -1154,6 +1217,7 @@ class App{
   }
 
   /* ── Staff logs ── */
+  _wmBadge(r){return r.work_mode&&r.work_mode!=='Office'?`<span style="font-size:.66rem;display:inline-block;padding:1px 5px;border-radius:4px;background:rgba(61,191,184,.15);color:var(--teal);margin-left:3px">${r.work_mode}</span>`:'';}
   renderStaffLogs(){
     const mv=$('st-mth')?.value;
     let recs=this.records.filter(r=>r.id===this.user.id);
@@ -1164,7 +1228,7 @@ class App{
     this._updateSortHeaders('st-table',this._sort.st);
     const body=$('st-logs');
     if(!recs.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📭</div>No records found</div></td></tr>';return;}
-    body.innerHTML=recs.map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'<span style="color:var(--teal)">Active</span>'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join('');
+    body.innerHTML=recs.map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td>${r.unit}${this._wmBadge(r)}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'<span style="color:var(--teal)">Active</span>'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join('');
   }
   setStFilter(key,val,el){
     this._stFilter[key]=val;
@@ -1182,7 +1246,7 @@ class App{
     const cnt=$('mgr-my-count');if(cnt)cnt.textContent=recs.length;
     const body=$('mgr-my-logs-body');if(!body)return;
     if(!recs.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📭</div>No records found</div></td></tr>';return;}
-    body.innerHTML=recs.map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'<span style="color:var(--teal)">Active</span>'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join('');
+    body.innerHTML=recs.map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td>${r.unit}${this._wmBadge(r)}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'<span style="color:var(--teal)">Active</span>'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join('');
   }
 
   /* ── Leave balances ── */
@@ -1192,9 +1256,9 @@ class App{
   }
   _renderLeaveBal(){
     const gender=this.staff[this.user.id]?.gender||'';
-    let types=['Annual Leave','Sick Leave','Paternity Leave','Compassionate Leave'];
-    if(gender==='female')types=['Annual Leave','Sick Leave','Maternity Leave','Compassionate Leave'];
-    const icons={'Annual Leave':'🌴','Sick Leave':'🏥','Maternity Leave':'👶','Paternity Leave':'👨‍👶','Compassionate Leave':'🕊'};
+    let types=['Annual Leave','Sick Leave','Paternity Leave','Compassionate Leave','Compensatory Leave'];
+    if(gender==='female')types=['Annual Leave','Sick Leave','Maternity Leave','Compassionate Leave','Compensatory Leave'];
+    const icons={'Annual Leave':'🌴','Sick Leave':'🏥','Maternity Leave':'👶','Paternity Leave':'👨‍👶','Compassionate Leave':'🕊','Compensatory Leave':'⏰'};
     $('st-leave-bal').innerHTML=`<h4>Leave Balances (${new Date().getFullYear()})</h4>`+
       types.map(t=>{
         const limit=LEAVE_LIMITS[t];const used=this._leaveDaysUsed(this.user.id,t);
@@ -1251,9 +1315,9 @@ class App{
     };
     if(isManagerRole(role)){
       const uid=this.user.id;
-      const isFinalApprover=uid===COUNTRY_LEADER_ID;
+      const isFinalApprover=uid===COUNTRY_LEADER_ID||this._isActiveDelegate(uid);
       const pending=isFinalApprover
-        ? this.leave.filter(l=>l.finalApproverId===uid&&(l.finalApproverStatus==='Pending'||l.hrStatus==='Pending')&&(l.supervisorStatus==='Approved'||l.supervisorStatus==='N/A')).length
+        ? this.leave.filter(l=>(l.finalApproverId===COUNTRY_LEADER_ID||l.finalApproverId===uid)&&(l.finalApproverStatus==='Pending'||l.hrStatus==='Pending')&&(l.supervisorStatus==='Approved'||l.supervisorStatus==='N/A')).length
         : this.leave.filter(l=>l.supervisorId===uid&&l.supervisorStatus==='Pending').length;
       setBadge('badge-mgr-leave','mob-badge-mgr-leave',pending);
     }
@@ -1287,9 +1351,9 @@ class App{
 
   _renderMgrLeaveBal(){
     const gender=this.staff[this.user.id]?.gender||'';
-    let types=['Annual Leave','Sick Leave','Paternity Leave','Compassionate Leave'];
-    if(gender==='female')types=['Annual Leave','Sick Leave','Maternity Leave','Compassionate Leave'];
-    const icons={'Annual Leave':'🌴','Sick Leave':'🏥','Maternity Leave':'👶','Paternity Leave':'👨‍👶','Compassionate Leave':'🕊'};
+    let types=['Annual Leave','Sick Leave','Paternity Leave','Compassionate Leave','Compensatory Leave'];
+    if(gender==='female')types=['Annual Leave','Sick Leave','Maternity Leave','Compassionate Leave','Compensatory Leave'];
+    const icons={'Annual Leave':'🌴','Sick Leave':'🏥','Maternity Leave':'👶','Paternity Leave':'👨‍👶','Compassionate Leave':'🕊','Compensatory Leave':'⏰'};
     const el=$('mgr-leave-bal');if(!el)return;
     el.innerHTML=`<h4>Leave Balances (${new Date().getFullYear()})</h4>`+
       types.map(t=>{
@@ -1384,6 +1448,8 @@ class App{
     const p=this._lvPfx();
     const sickUpload=$(p+'sick-upload');
     if(sickUpload)sickUpload.style.display=type==='Sick Leave'?'block':'none';
+    const compDates=$(p+'comp-dates');
+    if(compDates)compDates.style.display=type==='Compensatory Leave'?'block':'none';
     this.calcLeaveDays();
   }
   calcLeaveDays(){
@@ -1425,15 +1491,19 @@ class App{
     if(type==='Maternity Leave'&&gender!=='female')return setErr('Maternity: female staff only.');
     if(type==='Paternity Leave'&&gender!=='male')return setErr('Paternity: male staff only.');
     if(type==='Sick Leave'){const fi=$(p+'sick-file');if(fi&&!fi.files.length)return setErr('Upload a medical certificate.');}
+    if(type==='Compensatory Leave'){const cr=$(p+'comp-ref')?.value.trim();if(!cr)return setErr('Specify the dates you worked (weekends/holidays).');}
     const days=workingDaysBetween(start,end);
     if(days===0)return setErr('Dates fall on weekends/holidays.');
     const limit=LEAVE_LIMITS[type];
-    if(limit!==null){
+    if(limit!==null&&limit!==undefined){
       const used=this.leave.filter(l=>l.staffId===this.user.id&&l.type===type&&l.status!=='Rejected').reduce((a,l)=>a+(parseInt(l.days)||0),0);
       if(used+days>limit)return setErr(`${limit-used} days left for ${type}.`);
     }
     const overlap=this.leave.find(l=>l.staffId===this.user.id&&l.type===type&&l.status!=='Rejected'&&new Date(l.startDate)<=new Date(end)&&new Date(l.endDate)>=new Date(start));
     if(overlap)return setErr('Overlapping request exists.');
+
+    const handoverNote=$(p+'handover')?.value.trim()||'';
+    const compRef=type==='Compensatory Leave'?($(p+'comp-ref')?.value.trim()||''):'';
 
     const uid=this.user.id;
     const isDirectToCL=DIRECT_TO_CL.includes(uid);
@@ -1453,6 +1523,7 @@ class App{
       finalApproverId,finalApproverStatus:uid===COUNTRY_LEADER_ID?'Approved':supervisorStatus==='N/A'?'Pending':'Waiting',finalApproverNote:'',
       status:uid===COUNTRY_LEADER_ID?'Approved':'Pending',hrStatus:uid===COUNTRY_LEADER_ID?'Approved':'Pending',hrNote:'',
       sickNote:type==='Sick Leave'?($(p+'sick-file')?.files[0]?.name||''):'',
+      handoverNote,compRef,
       _supervisorEmail:this.staff[supervisorId]?.email||'',
       _finalApproverEmail:this.staff[finalApproverId]?.email||''
     };
@@ -1461,22 +1532,22 @@ class App{
     const result=await API.applyLeave(lv);
     if(!result||!result.success){toast('Server error — try again','err');return;}
 
-    /* Upload sick note to Google Drive if present */
+    /* Upload sick note to Supabase Storage if present */
     if(type==='Sick Leave'){
       const fileInput=$(p+'sick-file');
       if(fileInput&&fileInput.files.length){
         const file=fileInput.files[0];
         try{
-          toast('Uploading medical document to Drive…','info');
+          toast('Uploading medical document…','info');
           const base64=await this._fileToBase64(file);
           const uploadResult=await API.uploadSickNote(result.leaveId||id,file.name,base64,file.type);
           if(uploadResult&&uploadResult.success){
             lv.sickNote=file.name+' | '+uploadResult.fileUrl;
             lv.sickNoteUrl=uploadResult.fileUrl;
             lv.sickNoteDownload=uploadResult.downloadUrl;
-            toast('Medical document uploaded to Drive ✓');
+            toast('Medical document uploaded ✓');
           } else {
-            toast('Document saved locally but Drive upload failed','err');
+            toast('Document saved locally but upload failed','err');
           }
         }catch(e){console.warn('Sick note upload:',e);toast('Document upload error — leave still submitted','err');}
       }
@@ -1486,6 +1557,9 @@ class App{
     if(isManagerRole(this.user.role))this.renderMgrMyLeave();else this.renderStaffLeave();
     // Clear form
     $(p+'start').value='';$(p+'end').value='';$(p+'reason').value='';
+    if($(p+'handover'))$(p+'handover').value='';
+    if($(p+'comp-ref'))$(p+'comp-ref').value='';
+    if($(p+'comp-dates'))$(p+'comp-dates').style.display='none';
     if($('lv-supervisor-sel'))$('lv-supervisor-sel').value='';
     const preview=$(p+'days-preview');if(preview)preview.style.display='none';
     setErr('');
@@ -1523,7 +1597,8 @@ class App{
           supervisorNote:r.supervisor_note||'',finalApproverId:r.final_approver_id||'',
           finalApproverStatus:r.final_approver_status||'Pending',finalApproverNote:r.final_approver_note||'',
           status:r.overall_status||'Pending',hrStatus:r.final_approver_status||r.overall_status||'Pending',
-          hrNote:r.final_approver_note||'',appliedAt:r.applied_at||'',updatedAt:r.updated_at||''}));
+          hrNote:r.final_approver_note||'',appliedAt:r.applied_at||'',updatedAt:r.updated_at||'',
+          handoverNote:r.handover_note||'',compRef:r.comp_ref||''}));
         this._cacheL();
         this.renderMgrLeave();this.renderAdminLeave();
         if(this.renderStaffLeave)this.renderStaffLeave();
@@ -1535,9 +1610,9 @@ class App{
   renderMgrLeave(){
     const body=$('mgr-leave-body');if(!body)return;
     const uid=this.user.id;
-    const isFinalApprover=uid===COUNTRY_LEADER_ID;
+    const isFinalApprover=uid===COUNTRY_LEADER_ID||this._isActiveDelegate(uid);
     const items=isFinalApprover
-      ? this.leave.filter(l=>l.finalApproverId===uid&&(l.finalApproverStatus==='Pending'||l.hrStatus==='Pending')&&(l.supervisorStatus==='Approved'||l.supervisorStatus==='N/A'))
+      ? this.leave.filter(l=>(l.finalApproverId===COUNTRY_LEADER_ID||l.finalApproverId===uid)&&(l.finalApproverStatus==='Pending'||l.hrStatus==='Pending')&&(l.supervisorStatus==='Approved'||l.supervisorStatus==='N/A'))
       : this.leave.filter(l=>l.supervisorId===uid&&l.supervisorStatus==='Pending');
     if(!items.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">🏖</div>No pending requests</div></td></tr>';return;}
     body.innerHTML=items.slice().reverse().map(l=>`<tr>
@@ -1670,18 +1745,28 @@ class App{
   openLeaveModal(id){
     const lv=this.leave.find(l=>l.id===id);if(!lv)return;
     const uid=this.user?.id;
-    const isFinalApprover=uid===COUNTRY_LEADER_ID;
+    const isFinalApprover=uid===COUNTRY_LEADER_ID||this._isActiveDelegate(uid);
     const supName=this.staff[lv.supervisorId]?.name||'—';
     const finalName=this.staff[lv.finalApproverId]?.name||'—';
     const _bs=(s)=>s==='Approved'?'stage-ok':s==='Rejected'?'stage-rej':s==='N/A'?'stage-ok':'stage-pend';
     $('lm-title').textContent=(isFinalApprover?'✅ Final Approval — ':'👤 Supervisor Review — ')+lv.name;
-    $('lm-info').innerHTML=`<strong>Type:</strong> ${lv.type} &nbsp; <strong>Days:</strong> ${lv.days}<br>
+    let infoHTML=`<strong>Type:</strong> ${lv.type} &nbsp; <strong>Days:</strong> ${lv.days}<br>
       <strong>Dates:</strong> ${fmtISO(lv.startDate)} → ${fmtISO(lv.endDate)}<br>
-      <strong>Reason:</strong> ${lv.reason||'—'}<br>
-      ${lv.sickNote?`<strong>Medical Doc:</strong> ${this._renderSickNoteLink(lv.sickNote)}<br>`:''}
-      <strong>Supervisor (${supName}):</strong> <span class="stage-badge ${_bs(lv.supervisorStatus)}">${lv.supervisorStatus}</span><br>
+      <strong>Reason:</strong> ${lv.reason||'—'}<br>`;
+    if(lv.compRef)infoHTML+=`<strong>Compensatory Dates Worked:</strong> ${lv.compRef}<br>`;
+    if(lv.sickNote)infoHTML+=`<strong>Medical Doc:</strong> ${this._renderSickNoteLink(lv.sickNote)}<br>`;
+    if(lv.handoverNote)infoHTML+=`<strong>Handover Note:</strong> <span style="color:var(--text)">${lv.handoverNote}</span> <button class="bsm bsm-navy" style="margin-left:6px;font-size:.7rem" onclick="APP._dlHandover('${id}')">⬇ Download</button><br>`;
+    infoHTML+=`<strong>Supervisor (${supName}):</strong> <span class="stage-badge ${_bs(lv.supervisorStatus)}">${lv.supervisorStatus}</span><br>
       <strong>Final (${finalName}):</strong> <span class="stage-badge ${_bs(lv.finalApproverStatus||lv.hrStatus)}">${lv.finalApproverStatus||lv.hrStatus||'Pending'}</span>`;
+    $('lm-info').innerHTML=infoHTML;
     $('lm-note').value='';$('lm-id').value=id;$('leave-modal').classList.add('open');
+  }
+
+  /* ── Download handover note as text file ── */
+  _dlHandover(leaveId){
+    const lv=this.leave.find(l=>l.id===leaveId);if(!lv||!lv.handoverNote)return toast('No handover note','err');
+    const content='HANDOVER NOTE\n'+('═'.repeat(40))+'\nStaff: '+lv.name+'\nType: '+lv.type+'\nDates: '+lv.startDate+' to '+lv.endDate+'\n'+('═'.repeat(40))+'\n\n'+lv.handoverNote;
+    this._dl(content,'Handover_'+lv.name.replace(/\s/g,'_')+'_'+leaveId+'.txt','text/plain');
   }
 
   /* ── Decide leave — SERVER FIRST ── */
@@ -1689,7 +1774,7 @@ class App{
     const id=$('lm-id').value,note=$('lm-note').value.trim();
     const lv=this.leave.find(l=>l.id===id);if(!lv)return;
     const uid=this.user?.id;
-    const isFinalApprover=uid===COUNTRY_LEADER_ID;
+    const isFinalApprover=uid===COUNTRY_LEADER_ID||this._isActiveDelegate(uid);
     const stage=isFinalApprover?'final':'supervisor';
 
     /* SERVER FIRST */
@@ -2216,6 +2301,96 @@ class App{
       toast('Seed failed','err');
     }
   }
+
+  /* ═══════════════════════════════════════════
+     COUNTRY LEADER DELEGATION
+     Allows CL to delegate leave approval to another manager
+  ═══════════════════════════════════════════ */
+  _isActiveDelegate(uid){
+    try{
+      const d=JSON.parse(localStorage.getItem('thp_delegation')||'null');
+      if(!d||!d.active||d.delegateId!==uid)return false;
+      const now=new Date().toISOString().slice(0,10);
+      return now>=d.startDate&&now<=d.endDate;
+    }catch(e){return false;}
+  }
+
+  _getActiveDelegate(){
+    try{
+      const d=JSON.parse(localStorage.getItem('thp_delegation')||'null');
+      if(!d||!d.active)return null;
+      const now=new Date().toISOString().slice(0,10);
+      if(now>=d.startDate&&now<=d.endDate)return d;
+      return null;
+    }catch(e){return null;}
+  }
+
+  async renderDelegation(){
+    const statusEl=$('deleg-status');
+    const sel=$('deleg-person');
+    if(!sel)return;
+
+    // Populate delegate dropdown with managers
+    const managers=Object.entries(this.staff).filter(([id,s])=>SUPERVISOR_ROLES.includes(s.role)&&id!==COUNTRY_LEADER_ID).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    sel.innerHTML='<option value="">— Select a manager —</option>'+managers.map(([id,s])=>`<option value="${id}">${s.name} (${s.unit})</option>`).join('');
+
+    // Load current delegation from Supabase settings
+    const settings=await API._get('settings','key=eq.cl_delegation');
+    let deleg=null;
+    if(settings&&settings.length){
+      try{deleg=JSON.parse(settings[0].value);}catch(e){}
+    }
+    if(deleg&&deleg.active){
+      localStorage.setItem('thp_delegation',JSON.stringify(deleg));
+      const delegName=this.staff[deleg.delegateId]?.name||deleg.delegateId;
+      const now=new Date().toISOString().slice(0,10);
+      const isActive=now>=deleg.startDate&&now<=deleg.endDate;
+      statusEl.innerHTML=`<span style="color:${isActive?'var(--green)':'var(--gold)'}">● ${isActive?'Active':'Scheduled'} Delegation</span><br>
+        <strong>${delegName}</strong> can approve leave on behalf of the Country Leader<br>
+        <span style="font-size:.76rem;color:var(--text3)">${fmtISO(deleg.startDate)} → ${fmtISO(deleg.endDate)}</span>`;
+      sel.value=deleg.delegateId;
+      $('deleg-start').value=deleg.startDate;
+      $('deleg-end').value=deleg.endDate;
+    } else {
+      localStorage.removeItem('thp_delegation');
+      statusEl.innerHTML='<span style="color:var(--text3)">● No active delegation</span><br><span style="font-size:.78rem">The Country Leader is currently the sole final approver for all leave requests.</span>';
+    }
+  }
+
+  async saveDelegation(){
+    const delegateId=$('deleg-person')?.value;
+    const startDate=$('deleg-start')?.value;
+    const endDate=$('deleg-end')?.value;
+    const msg=$('deleg-msg');
+    if(!delegateId)return msg.innerHTML='<span style="color:var(--red)">Select a manager.</span>';
+    if(!startDate||!endDate)return msg.innerHTML='<span style="color:var(--red)">Set start and end dates.</span>';
+    if(new Date(endDate)<new Date(startDate))return msg.innerHTML='<span style="color:var(--red)">End date before start date.</span>';
+
+    const deleg={active:true,delegateId,startDate,endDate,updatedAt:new Date().toISOString()};
+    msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    await API._upsert('settings',[{key:'cl_delegation',value:JSON.stringify(deleg),updated_at:new Date().toISOString()}]);
+    localStorage.setItem('thp_delegation',JSON.stringify(deleg));
+
+    // Notify the delegate via email
+    const delegName=this.staff[delegateId]?.name||'';
+    const delegEmail=this.staff[delegateId]?.email||'';
+    if(delegEmail){
+      API.gasPost({action:'delegationNotify',delegateName:delegName,delegateEmail:delegEmail,startDate,endDate,active:true}).catch(()=>{});
+    }
+
+    this.renderDelegation();
+    msg.innerHTML='<span style="color:var(--green)">✓ Delegation activated!</span>';
+    toast(`${delegName} can now approve leave as delegate.`);
+  }
+
+  async deactivateDelegation(){
+    if(!confirm('Deactivate the current delegation?'))return;
+    const deleg={active:false,delegateId:'',startDate:'',endDate:'',updatedAt:new Date().toISOString()};
+    await API._upsert('settings',[{key:'cl_delegation',value:JSON.stringify(deleg),updated_at:new Date().toISOString()}]);
+    localStorage.removeItem('thp_delegation');
+    this.renderDelegation();
+    toast('Delegation deactivated.');
+  }
 }
 
 const APP=new App();
@@ -2284,7 +2459,7 @@ const APP=new App();
         const av=$('mgr-av');if(av){av.textContent=ini(APP.user.name);av.style.background=APP.user.color||avColor(APP.user.name);}
         const mav=$('mob-mgr-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
         const mn=$('mob-mgr-name');if(mn)mn.textContent=APP.user.name;
-        APP._sessCheck();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
+        APP._sessCheck();APP._initWorkModeListeners();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         hideLoader();
@@ -2296,7 +2471,7 @@ const APP=new App();
         const av=$('st-av');if(av){av.textContent=ini(APP.user.name);av.style.background=APP.user.color||avColor(APP.user.name);}
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=APP.user.name;
-        APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
+        APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._initWorkModeListeners();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
         hideLoader();
@@ -2316,7 +2491,8 @@ const APP=new App();
             supervisorNote:r.supervisor_note||'',finalApproverId:r.final_approver_id||'',
             finalApproverStatus:r.final_approver_status||'Pending',finalApproverNote:r.final_approver_note||'',
             status:r.overall_status||'Pending',hrStatus:r.final_approver_status||r.overall_status||'Pending',
-            hrNote:r.final_approver_note||'',appliedAt:r.applied_at||'',updatedAt:r.updated_at||''}));
+            hrNote:r.final_approver_note||'',appliedAt:r.applied_at||'',updatedAt:r.updated_at||'',
+            handoverNote:r.handover_note||'',compRef:r.comp_ref||''}));
           APP._cacheL();APP._updateNotifBadges();
         }
       }catch(e){}
