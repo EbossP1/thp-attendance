@@ -335,7 +335,7 @@
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
       <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
-      <button class="nav-item" id="nav-mgr-deleg" style="display:none" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
+      <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
       <div class="sb-bottom">
         <div class="sync-pill no-url" id="mgr-sync-chip">⬤ Local only</div>
@@ -595,7 +595,7 @@
       <button class="mob-tab" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory();APP._setMobTab('mob-nav-mgr',5)"><span class="mico">📒</span>History</button>
       <button class="mob-tab" id="mob-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport();APP._setMobTab('mob-nav-mgr',6)"><span class="mico">📈</span>Reports</button>
       <button class="mob-tab" onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-');APP._setMobTab('mob-nav-mgr',7)"><span class="mico">👤</span>Profile</button>
-      <button class="mob-tab" id="mob-mgr-deleg" style="display:none" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-');APP._setMobTab('mob-nav-mgr',8)"><span class="mico">🔄</span>Delegate</button>
+      <button class="mob-tab cl-only-tab" id="mob-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-');APP._setMobTab('mob-nav-mgr',8)"><span class="mico">🔄</span>Delegate</button>
     </div>
   </nav>
 </section>
