@@ -280,6 +280,7 @@ body{
 @keyframes badgePop{from{transform:scale(0)}to{transform:scale(1)}}
 /* Mobile tab badge */
 .mob-tab{position:relative;}
+.cl-only-tab{display:none!important;}
 .mob-notif{
   display:none;position:absolute;
   top:2px;right:calc(50% - 16px);
