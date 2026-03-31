@@ -2074,11 +2074,27 @@ class App{
   clearMgrRepDates(){if($('mgr-rep-from'))$('mgr-rep-from').value='';if($('mgr-rep-to'))$('mgr-rep-to').value='';this.renderMgrReport();}
   renderMgrReport(){
     const isHR=this.user.id===HR_MANAGER_ID;
+    const isFinance=this.user.id==='THPG/05/2025';
     const hdr=$('m-report-hdr'),body=$('m-report-body');if(!hdr||!body)return;
+    const sub=$('m-report-sub');
+    if(sub)sub.textContent=isHR?'All staff attendance & leave records':'Staff attendance summary — Present / Absent / On Leave';
     if(isHR){
       let recs=this._mgrRepFilter(this.records.slice());
       hdr.innerHTML='<th>Date</th><th>Staff ID</th><th>Name</th><th>Unit</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th>';
-      body.innerHTML=recs.length?recs.slice().reverse().map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'Active'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">📭</div>No records</div></td></tr>';
+      let rows=recs.length?recs.slice().reverse().map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'Active'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">📭</div>No records</div></td></tr>';
+      // Add leave register section for HR
+      const leaveItems=this.leave.filter(l=>l.status==='Approved'||l.status==='Pending');
+      if(leaveItems.length){
+        rows+=`<tr><td colspan="8" style="padding:1.2rem .5rem .5rem;border:none"><h4 style="margin:0;color:var(--teal)">🏖 Leave Requests (Approved &amp; Pending)</h4></td></tr>`;
+        rows+=`<tr style="background:var(--surf2)"><th>Staff</th><th>Unit</th><th>Type</th><th>Dates</th><th>Days</th><th>Supervisor</th><th>Final Status</th><th>Attachment</th></tr>`;
+        leaveItems.slice().reverse().forEach(l=>{
+          const supName=this.staff[l.supervisorId]?.name||'—';
+          const faBdg=l.status==='Approved'?'<span class="stage-badge stage-ok">✓ Approved</span>':'<span class="stage-badge stage-pend">⏳ Pending</span>';
+          const attach=l.sickNote?this._renderSickNoteLink(l.sickNote):'—';
+          rows+=`<tr><td><strong>${l.name}</strong></td><td style="font-size:.76rem">${l.unit}</td><td>${l.type}</td><td style="font-size:.76rem">${fmtISO(l.startDate)} → ${fmtISO(l.endDate)}</td><td>${l.days}</td><td style="font-size:.76rem">${supName}</td><td>${faBdg}</td><td>${attach}</td></tr>`;
+        });
+      }
+      body.innerHTML=rows;
     } else {
       const EXCLUDED_UNITS=['National Service','Intern'];
       const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
@@ -2092,7 +2108,19 @@ class App{
   }
   exportMgrReport(){
     const isHR=this.user.id===HR_MANAGER_ID;
-    if(isHR){let recs=this._mgrRepFilter(this.records.slice()).reverse();let csv='Date,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';recs.forEach(r=>{csv+=`"${fmtD(r.date||r.in)}","${r.id}","${r.name}","${r.unit}","${fmtT(r.in)}","${r.out?fmtT(r.out):'Active'}","${r.hours||'--'}","${r.status}"\n`;});this._dl(csv,'THP_FullReport_'+Date.now()+'.csv','text/csv');}
+    if(isHR){
+      let recs=this._mgrRepFilter(this.records.slice()).reverse();
+      let csv='ATTENDANCE RECORDS\nDate,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';
+      recs.forEach(r=>{csv+=`"${fmtD(r.date||r.in)}","${r.id}","${r.name}","${r.unit}","${fmtT(r.in)}","${r.out?fmtT(r.out):'Active'}","${r.hours||'--'}","${r.status}"\n`;});
+      // Add leave section
+      csv+='\nLEAVE REQUESTS (Approved & Pending)\nStaff ID,Name,Unit,Type,Start Date,End Date,Days,Supervisor,Status,Attachment\n';
+      const leaveItems=this.leave.filter(l=>l.status==='Approved'||l.status==='Pending');
+      leaveItems.slice().reverse().forEach(l=>{
+        const supName=this.staff[l.supervisorId]?.name||'';
+        csv+=`"${l.staffId}","${l.name}","${l.unit}","${l.type}","${l.startDate}","${l.endDate}","${l.days}","${supName}","${l.status}","${l.sickNote||''}"\n`;
+      });
+      this._dl(csv,'THP_HR_Report_'+Date.now()+'.csv','text/csv');
+    }
     else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
   }
   printMgrReport(){
@@ -2334,9 +2362,17 @@ class App{
     const sel=$(p+'deleg-person')||$('deleg-person');
     if(!sel)return;
 
-    // Populate delegate dropdown with managers
-    const managers=Object.entries(this.staff).filter(([id,s])=>SUPERVISOR_ROLES.includes(s.role)&&id!==COUNTRY_LEADER_ID).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-    sel.innerHTML='<option value="">— Select a manager —</option>'+managers.map(([id,s])=>`<option value="${id}">${s.name} (${s.unit})</option>`).join('');
+    // Populate delegate dropdown — managers and supervisors (exclude CL herself)
+    let managers=Object.entries(this.staff).filter(([id,s])=>{
+      if(id===COUNTRY_LEADER_ID)return false;
+      const r=(s.role||'staff').toLowerCase().trim();
+      return r==='manager'||r==='country_leader';
+    }).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    // Fallback: if no managers found (role data issue), show all staff except CL
+    if(!managers.length){
+      managers=Object.entries(this.staff).filter(([id])=>id!==COUNTRY_LEADER_ID).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    }
+    sel.innerHTML='<option value="">— Select a manager —</option>'+managers.map(([id,s])=>`<option value="${id}">${s.name} (${s.unit||'—'})${s.role==='manager'?' ★':''}</option>`).join('');
 
     // Load current delegation from Supabase settings
     const settings=await API._get('settings','key=eq.cl_delegation');
