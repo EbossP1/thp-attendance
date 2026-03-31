@@ -982,7 +982,7 @@ class App{
         this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
-        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.style.display='';const dm=$('mob-mgr-deleg');if(dm)dm.style.display='';}
+        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -2547,7 +2547,7 @@ const APP=new App();
         APP._sessCheck();APP._initWorkModeListeners();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
-        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.style.display='';const dm=$('mob-mgr-deleg');if(dm)dm.style.display='';}
+        if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
