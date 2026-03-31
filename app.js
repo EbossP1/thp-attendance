@@ -2362,17 +2362,16 @@ class App{
     const sel=$(p+'deleg-person')||$('deleg-person');
     if(!sel)return;
 
-    // Populate delegate dropdown — managers and supervisors (exclude CL herself)
-    let managers=Object.entries(this.staff).filter(([id,s])=>{
+    // Populate delegate dropdown — ONLY managers/supervisors (exclude CL herself)
+    const managers=Object.entries(this.staff).filter(([id,s])=>{
       if(id===COUNTRY_LEADER_ID)return false;
       const r=(s.role||'staff').toLowerCase().trim();
       return r==='manager'||r==='country_leader';
     }).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-    // Fallback: if no managers found (role data issue), show all staff except CL
-    if(!managers.length){
-      managers=Object.entries(this.staff).filter(([id])=>id!==COUNTRY_LEADER_ID).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-    }
-    sel.innerHTML='<option value="">— Select a manager —</option>'+managers.map(([id,s])=>`<option value="${id}">${s.name} (${s.unit||'—'})${s.role==='manager'?' ★':''}</option>`).join('');
+    sel.innerHTML='<option value="">— Select a manager —</option>'+
+      (managers.length
+        ? managers.map(([id,s])=>`<option value="${id}">${s.name} (${s.unit||'—'})</option>`).join('')
+        : '<option value="" disabled>⚠ No managers found — check staff roles in admin panel</option>');
 
     // Load current delegation from Supabase settings
     const settings=await API._get('settings','key=eq.cl_delegation');
