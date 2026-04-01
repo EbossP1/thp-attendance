@@ -268,6 +268,11 @@ const API={
   ═══════════════════════════════════════════ */
   async saveRecord(rec){
     this.showBar('syncing','Saving…');
+    // Server-side duplicate check — prevent multiple clock-ins on same day
+    const todayCheck=await this._get('attendance','staff_id=eq.'+encodeURIComponent(rec.id)+'&date=eq.'+encodeURIComponent(rec.date)+'&limit=1');
+    if(todayCheck&&todayCheck.length){
+      this.showBar('error','Already clocked in today');return{success:false,duplicate:true};
+    }
     const r=await this._insert('attendance',{
       date:rec.date,staff_id:rec.id,name:rec.name,unit:(rec.unit||'').trim(),
       clock_in:rec.in,clock_out:rec.out||null,hours:rec.hours||null,status:rec.status||'Active',
@@ -1110,29 +1115,36 @@ class App{
   async clockIn(){
     const now=new Date();
     const p=this._pfx();
+    const ciBtn=$(p+'btn-ci');
+    if(ciBtn)ciBtn.disabled=true; // Prevent double-tap
+    const _bail=(msg,type)=>{if(ciBtn)ciBtn.disabled=false;return toast(msg,type||'err');};
     const workMode=$(p+'work-mode')?.value||'Office';
 
     // Work Trip mode — redirect to trip registration
     if(workMode==='Work Trip'){
+      if(ciBtn)ciBtn.disabled=false;
       const tp=$(p+'trip-panel');if(tp)tp.style.display='block';
       return toast('Fill in your trip dates below and register.','info');
     }
 
-    if(isWeekend(now))return toast('Not allowed on weekends.','err');
-    if(isHoliday(now)){const hName=getHolidayName(now);return toast(`Today is a public holiday${hName?' — '+hName:''}.`,'info');}
-    if(this.records.find(r=>r.id===this.user.id&&!r.out))return toast('Already clocked in','err');
+    if(isWeekend(now))return _bail('Not allowed on weekends.');
+    if(isHoliday(now)){const hName=getHolidayName(now);return _bail(`Today is a public holiday${hName?' — '+hName:''}.`,'info');}
+    if(this.records.find(r=>r.id===this.user.id&&!r.out))return _bail('Already clocked in');
     const todayStr=todayISO();
     const alreadyToday=this.records.find(r=>r.id===this.user.id&&((r.date||r.in||'').slice(0,10)===todayStr||(r.in&&new Date(r.in).toISOString().slice(0,10)===todayStr)));
-    if(alreadyToday)return toast('Already clocked in today.','err');
+    if(alreadyToday)return _bail('Already clocked in today.');
+    // Double-check server for duplicates (handles multi-tab / stale cache)
+    const serverCheck=await API._get('attendance','staff_id=eq.'+encodeURIComponent(this.user.id)+'&date=eq.'+encodeURIComponent(fmtD(now.toISOString()))+'&limit=1');
+    if(serverCheck&&serverCheck.length)return _bail('Already clocked in today (server confirmed).');
     const onLeave=leaveOnDate(this.leave,this.user.id,todayStr);
-    if(onLeave)return toast(`On approved ${onLeave.type} today.`,'info');
+    if(onLeave)return _bail(`On approved ${onLeave.type} today.`,'info');
 
     const unit=(this.user.unit||'').trim();
     const rec={date:fmtD(now.toISOString()),id:this.user.id,name:this.user.name,unit,in:now.toISOString(),out:null,hours:null,status:'Active',work_mode:workMode};
 
     /* SERVER FIRST */
     const result=await API.saveRecord(rec);
-    if(!result||!result.success){toast('Server error — try again','err');return;}
+    if(!result||!result.success){if(ciBtn)ciBtn.disabled=false;toast('Server error — try again','err');return;}
 
     this.records.push(rec);this._cacheR();
     $(p+'btn-ci').disabled=true;$(p+'btn-co').disabled=false;this._sess(true);this._stats();
@@ -1206,7 +1218,7 @@ class App{
     const p=this._pfx();
     const badge=$(p+'sess-badge'),txt=$(p+'sess-txt');
     if(badge)badge.className='sess-badge '+(on?'sess-on':'sess-off');
-    if(txt)txt.textContent=on?'On Shift':'Signed Out';
+    if(txt)txt.textContent=on?'At Post':'Signed Out';
   }
   _stats(){
     const p=this._pfx();
@@ -2068,7 +2080,7 @@ class App{
     const start=from?new Date(from):new Date(y,m,1);
     const end=to?new Date(to+'T23:59:59'):now;
     const days=[];
-    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){if(isWorkingDay(d))days.push(new Date(d));}
+    for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){if(!isWeekend(d))days.push(new Date(d));}
     return days;
   }
   clearMgrRepDates(){if($('mgr-rep-from'))$('mgr-rep-from').value='';if($('mgr-rep-to'))$('mgr-rep-to').value='';this.renderMgrReport();}
@@ -2077,11 +2089,24 @@ class App{
     const isFinance=this.user.id==='THPG/05/2025';
     const hdr=$('m-report-hdr'),body=$('m-report-body');if(!hdr||!body)return;
     const sub=$('m-report-sub');
-    if(sub)sub.textContent=isHR?'All staff attendance & leave records':'Staff attendance summary — Present / Absent / On Leave';
+    if(sub)sub.textContent=isHR?'All staff attendance & leave records':'Staff attendance summary — Present / Absent / On Leave / Holiday';
     if(isHR){
       let recs=this._mgrRepFilter(this.records.slice());
       hdr.innerHTML='<th>Date</th><th>Staff ID</th><th>Name</th><th>Unit</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th>';
       let rows=recs.length?recs.slice().reverse().map(r=>`<tr><td>${fmtD(r.date||r.in)}</td><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${fmtT(r.in)}</td><td>${r.out?fmtT(r.out):'Active'}</td><td>${r.hours||'--'}</td><td>${this._bdg(r.status)}</td></tr>`).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">📭</div>No records</div></td></tr>';
+
+      // Add holiday section for HR report
+      const allDays=this._mgrRepDays();
+      const holDays=allDays.filter(dt=>isHoliday(dt));
+      if(holDays.length){
+        rows+=`<tr><td colspan="8" style="padding:1.2rem .5rem .5rem;border:none"><h4 style="margin:0;color:var(--gold)">📅 Public Holidays in Period</h4></td></tr>`;
+        rows+=`<tr style="background:var(--surf2)"><th colspan="3">Date</th><th colspan="5">Holiday Name</th></tr>`;
+        holDays.forEach(dt=>{
+          const hName=getHolidayName(dt)||'Public Holiday';
+          rows+=`<tr><td colspan="3">${fmtD(dt.toISOString())}</td><td colspan="5" style="color:var(--gold)">${hName}</td></tr>`;
+        });
+      }
+
       // Add leave register section for HR
       const leaveItems=this.leave.filter(l=>l.status==='Approved'||l.status==='Pending');
       if(leaveItems.length){
@@ -2100,10 +2125,28 @@ class App{
       const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
       const allDays=this._mgrRepDays();
       const rows=[];
-      allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));rows.push({id,name:s.name,unit:s.unit,date:dateStr,dt,present,onLeave});});});
+      allDays.forEach(dt=>{
+        const dateStr=fmtD(dt.toISOString());
+        const hol=isHoliday(dt);
+        const holName=hol?getHolidayName(dt):null;
+        if(hol){
+          // Holiday row — show once for all staff
+          rows.push({id:'—',name:'ALL STAFF',unit:'—',date:dateStr,dt,present:false,onLeave:null,holiday:true,holidayName:holName||'Public Holiday'});
+        } else {
+          staffList.forEach(([id,s])=>{
+            const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);
+            const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));
+            rows.push({id,name:s.name,unit:s.unit,date:dateStr,dt,present,onLeave,holiday:false});
+          });
+        }
+      });
       rows.sort((a,b)=>b.dt-a.dt);
       hdr.innerHTML='<th>Staff ID</th><th>Date</th><th>Name</th><th>Unit</th><th>Status</th>';
-      body.innerHTML=rows.length?rows.map(r=>{let badge;if(r.present)badge='<span class="badge b-ok">✓ Present</span>';else if(r.onLeave)badge=`<span class="badge" style="background:rgba(99,102,241,.15);color:#4338ca">🌴 ${r.onLeave.type}</span>`;else badge='<span class="badge b-err">✗ Absent</span>';return`<tr><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td>${r.date}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${badge}</td></tr>`;}).join(''):'<tr><td colspan="5"><div class="empty"><div class="empty-ico">📭</div>No data</div></td></tr>';
+      body.innerHTML=rows.length?rows.map(r=>{
+        if(r.holiday)return`<tr style="background:rgba(245,166,35,.08)"><td style="color:var(--gold)">📅</td><td style="color:var(--gold);font-weight:600">${r.date}</td><td colspan="2" style="color:var(--gold);font-weight:600">${r.holidayName}</td><td><span class="badge" style="background:rgba(245,166,35,.15);color:#d97706">📅 Holiday</span></td></tr>`;
+        let badge;if(r.present)badge='<span class="badge b-ok">✓ Present</span>';else if(r.onLeave)badge=`<span class="badge" style="background:rgba(99,102,241,.15);color:#4338ca">🌴 ${r.onLeave.type}</span>`;else badge='<span class="badge b-err">✗ Absent</span>';
+        return`<tr><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td>${r.date}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td>${badge}</td></tr>`;
+      }).join(''):'<tr><td colspan="5"><div class="empty"><div class="empty-ico">📭</div>No data</div></td></tr>';
     }
   }
   exportMgrReport(){
@@ -2121,13 +2164,140 @@ class App{
       });
       this._dl(csv,'THP_HR_Report_'+Date.now()+'.csv','text/csv');
     }
-    else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
+    else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());const hol=isHoliday(dt);if(hol){const holName=getHolidayName(dt)||'Public Holiday';csv+=`"—","${dateStr}","ALL STAFF","—","Holiday — ${holName}"\n`;}else{staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});}});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
   }
   printMgrReport(){
     const tbl=$('m-report-table');if(!tbl)return;
-    const logoImg=document.querySelector('img[alt="THP-Ghana"],img[alt="Logo"],img[alt="THP"]');
+    const isHR=this.user.id===HR_MANAGER_ID;
+    const now=new Date();
+    const dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+    const timeStr=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const fromVal=$('mgr-rep-from')?.value,toVal=$('mgr-rep-to')?.value;
+    const periodLabel=fromVal&&toVal?`${fmtISO(fromVal)} — ${fmtISO(toVal)}`:`${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})} (Month to Date)`;
+    const reportTitle=isHR?'Staff Attendance & Leave Report':'Staff Attendance Summary Report';
+    const reportSub=isHR?'Includes all clock-in/out records, leave requests, and public holidays':'Present / Absent / On Leave / Holiday status per working day';
+    const generatedBy=this.user.name+' ('+roleLabel(this.user.role)+')';
+    const logoSrc=document.querySelector('.lo-logo')?.src||document.querySelector('img[alt="THP"]')?.src||'';
+
     const w=window.open('','_blank');
-    w.document.write(`<!DOCTYPE html><html><head><title>THP-Ghana Report</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#2D3592;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #eee}tr:nth-child(even) td{background:#f9f9f9}@media print{button{display:none}}</style></head><body>${tbl.outerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>${reportTitle} — THP-Ghana</title>
+<style>
+  @page{size:A4 landscape;margin:15mm 12mm;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:11px;line-height:1.5;padding:0;}
+  .page{padding:8mm;}
+
+  /* Header */
+  .rpt-header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #2D3592;padding-bottom:12px;margin-bottom:6px;}
+  .rpt-logo-block{display:flex;align-items:center;gap:14px;}
+  .rpt-logo{height:52px;width:auto;}
+  .rpt-org{font-size:15px;font-weight:700;color:#2D3592;line-height:1.3;}
+  .rpt-org small{display:block;font-size:10px;font-weight:400;color:#64748b;letter-spacing:.5px;text-transform:uppercase;}
+  .rpt-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.6;}
+  .rpt-meta strong{color:#1e293b;}
+
+  /* Title strip */
+  .rpt-title-strip{background:linear-gradient(135deg,#2D3592,#3DBFB8);color:#fff;padding:10px 16px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .rpt-title-strip h1{font-size:14px;font-weight:700;margin:0;}
+  .rpt-title-strip .rpt-period{font-size:10px;opacity:.9;}
+  .rpt-title-strip .rpt-sub{font-size:9px;opacity:.75;margin-top:2px;}
+
+  /* Table */
+  table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px;}
+  th{background:#2D3592;color:#fff;padding:7px 6px;text-align:left;font-weight:600;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;border:1px solid #2D3592;}
+  td{padding:6px;border:1px solid #e2e8f0;vertical-align:top;}
+  tr:nth-child(even) td{background:#f8fafc;}
+  tr:hover td{background:#eef2ff;}
+
+  /* Badges */
+  .b-present{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-absent{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-leave{background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-holiday{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-active{background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-early{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-done{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-approved{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+  .b-pending{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
+
+  /* Section headers */
+  .section-hdr{background:#f1f5f9;border-left:4px solid #2D3592;padding:8px 12px;margin:16px 0 8px;font-size:12px;font-weight:700;color:#2D3592;}
+  .section-hdr.teal{border-left-color:#3DBFB8;color:#0f766e;}
+  .section-hdr.gold{border-left-color:#F5A623;color:#92400e;}
+  .hol-row td{background:#fffbeb !important;border-left:3px solid #F5A623;}
+
+  /* Footer */
+  .rpt-footer{border-top:2px solid #e2e8f0;padding-top:10px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8;}
+  .rpt-footer .rpt-conf{font-style:italic;}
+  .rpt-footer .rpt-page{font-weight:600;}
+
+  /* Signature block */
+  .sig-block{display:flex;gap:60px;margin-top:30px;padding-top:8px;}
+  .sig-line{flex:1;border-top:1px solid #94a3b8;padding-top:6px;font-size:9px;color:#64748b;}
+  .sig-line strong{color:#1e293b;display:block;margin-bottom:2px;}
+
+  @media print{
+    .no-print{display:none!important;}
+    body{padding:0;}
+    .page{padding:0;}
+  }
+</style></head><body>
+<div class="page">
+  <!-- Header -->
+  <div class="rpt-header">
+    <div class="rpt-logo-block">
+      ${logoSrc?`<img src="${logoSrc}" class="rpt-logo" alt="THP">`:''}
+      <div class="rpt-org">The Hunger Project — Ghana<small>Staff Attendance & Leave Management System</small></div>
+    </div>
+    <div class="rpt-meta">
+      <strong>Generated:</strong> ${dateStr} at ${timeStr}<br>
+      <strong>By:</strong> ${generatedBy}<br>
+      <strong>Report ID:</strong> RPT-${Date.now().toString(36).toUpperCase()}
+    </div>
+  </div>
+
+  <!-- Title strip -->
+  <div class="rpt-title-strip">
+    <div>
+      <h1>📊 ${reportTitle}</h1>
+      <div class="rpt-sub">${reportSub}</div>
+    </div>
+    <div class="rpt-period">📅 ${periodLabel}</div>
+  </div>
+
+  <!-- Report body -->
+  ${tbl.outerHTML
+    .replace(/class="badge b-ok"/g,'class="b-present"')
+    .replace(/class="badge b-err"/g,'class="b-absent"')
+    .replace(/class="badge b-active"/g,'class="b-active"')
+    .replace(/class="badge b-early"/g,'class="b-early"')
+    .replace(/background:rgba\(99,102,241,\.15\);color:#4338ca/g,'')
+    .replace(/class="badge"/g,'class="b-leave"')
+    .replace(/class="stage-badge stage-ok"/g,'class="b-approved"')
+    .replace(/class="stage-badge stage-pend"/g,'class="b-pending"')
+    .replace(/background:rgba\(245,166,35,\.15\);color:#d97706/g,'')
+    .replace(/style="background:rgba\(245,166,35,\.08\)"/g,'class="hol-row"')
+  }
+
+  <!-- Signature block -->
+  <div class="sig-block">
+    <div class="sig-line"><strong>Prepared by:</strong>${generatedBy}</div>
+    <div class="sig-line"><strong>Reviewed by:</strong>______________________</div>
+    <div class="sig-line"><strong>Date:</strong>${dateStr}</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="rpt-footer">
+    <div class="rpt-conf">CONFIDENTIAL — For internal use only. The Hunger Project — Ghana.</div>
+    <div class="rpt-page">Page 1 of 1</div>
+  </div>
+</div>
+
+<div class="no-print" style="text-align:center;padding:16px">
+  <button onclick="window.print()" style="padding:10px 28px;font-size:14px;background:#2D3592;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">🖨 Print Report</button>
+  <button onclick="window.close()" style="padding:10px 28px;font-size:14px;background:#ef4444;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;margin-left:10px">✕ Close</button>
+</div>
+</body></html>`);
     w.document.close();
   }
 
