@@ -496,6 +496,10 @@
                 <span>To</span><input class="fi" type="date" id="mgr-rep-to" oninput="APP.renderMgrReport()" style="width:130px">
                 <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.clearMgrRepDates()">✕</button>
               </div>
+              <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
+                <span>🔍</span><input class="fi" type="text" id="mgr-rep-staff" placeholder="Staff ID or Name…" oninput="APP.renderMgrReport()" style="width:160px">
+                <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="$('mgr-rep-staff').value='';APP.renderMgrReport()">✕</button>
+              </div>
               <button class="bsm bsm-navy" onclick="APP.exportMgrReport()">📊 CSV</button>
               <button class="bsm bsm-gold" onclick="APP.printMgrReport()">🖨 Print</button>
             </div>
