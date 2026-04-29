@@ -1643,7 +1643,10 @@ class App{
   renderAdminLeave(){
     const body=$('ad-leave-body');if(!body)return;
     const f=($('ad-leave-filter')?.value)||'';
-    const items=f?this.leave.filter(l=>l.status===f):this.leave;
+    // Deduplicate leave entries by ID
+    const seen=new Set();
+    const unique=this.leave.filter(l=>{if(seen.has(l.id))return false;seen.add(l.id);return true;});
+    const items=f?unique.filter(l=>l.status===f):unique;
     if(!items.length){body.innerHTML='<tr><td colspan="9"><div class="empty"><div class="empty-ico">🏖</div>No leave requests</div></td></tr>';return;}
     body.innerHTML=items.slice().reverse().map(l=>`<tr>
       <td><strong>${l.name}</strong></td><td style="color:var(--text2);font-size:.76rem">${l.unit}</td><td>${l.type}</td>
@@ -2172,137 +2175,10 @@ class App{
     else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());const hol=isHoliday(dt);if(hol){const holName=getHolidayName(dt)||'Public Holiday';csv+=`"—","${dateStr}","ALL STAFF","—","Holiday — ${holName}"\n`;}else{staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});}});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
   }
   printMgrReport(){
-    const tbl=$('m-report-table');if(!tbl)return;
-    const isHR=this.user.id===HR_MANAGER_ID;
-    const now=new Date();
-    const dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-    const timeStr=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-    const fromVal=$('mgr-rep-from')?.value,toVal=$('mgr-rep-to')?.value;
-    const periodLabel=fromVal&&toVal?`${fmtISO(fromVal)} — ${fmtISO(toVal)}`:`${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})} (Month to Date)`;
-    const reportTitle=isHR?'Staff Attendance & Leave Report':'Staff Attendance Summary Report';
-    const reportSub=isHR?'Includes all clock-in/out records, leave requests, and public holidays':'Present / Absent / On Leave / Holiday status per working day';
-    const generatedBy=this.user.name+' ('+roleLabel(this.user.role)+')';
-    const logoSrc=document.querySelector('.lo-logo')?.src||document.querySelector('img[alt="THP"]')?.src||'';
-
+    const html=this._buildReportHTML(false);
+    if(!html)return;
     const w=window.open('','_blank');
-    w.document.write(`<!DOCTYPE html><html><head><title>${reportTitle} — THP-Ghana</title>
-<style>
-  @page{size:A4 landscape;margin:15mm 12mm;}
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:11px;line-height:1.5;padding:0;}
-  .page{padding:8mm;}
-
-  /* Header */
-  .rpt-header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #2D3592;padding-bottom:12px;margin-bottom:6px;}
-  .rpt-logo-block{display:flex;align-items:center;gap:14px;}
-  .rpt-logo{height:52px;width:auto;}
-  .rpt-org{font-size:15px;font-weight:700;color:#2D3592;line-height:1.3;}
-  .rpt-org small{display:block;font-size:10px;font-weight:400;color:#64748b;letter-spacing:.5px;text-transform:uppercase;}
-  .rpt-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.6;}
-  .rpt-meta strong{color:#1e293b;}
-
-  /* Title strip */
-  .rpt-title-strip{background:linear-gradient(135deg,#2D3592,#3DBFB8);color:#fff;padding:10px 16px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
-  .rpt-title-strip h1{font-size:14px;font-weight:700;margin:0;}
-  .rpt-title-strip .rpt-period{font-size:10px;opacity:.9;}
-  .rpt-title-strip .rpt-sub{font-size:9px;opacity:.75;margin-top:2px;}
-
-  /* Table */
-  table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px;}
-  th{background:#2D3592;color:#fff;padding:7px 6px;text-align:left;font-weight:600;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;border:1px solid #2D3592;}
-  td{padding:6px;border:1px solid #e2e8f0;vertical-align:top;}
-  tr:nth-child(even) td{background:#f8fafc;}
-  tr:hover td{background:#eef2ff;}
-
-  /* Badges */
-  .b-present{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-absent{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-leave{background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-holiday{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-active{background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-early{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-done{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-approved{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-  .b-pending{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;}
-
-  /* Section headers */
-  .section-hdr{background:#f1f5f9;border-left:4px solid #2D3592;padding:8px 12px;margin:16px 0 8px;font-size:12px;font-weight:700;color:#2D3592;}
-  .section-hdr.teal{border-left-color:#3DBFB8;color:#0f766e;}
-  .section-hdr.gold{border-left-color:#F5A623;color:#92400e;}
-  .hol-row td{background:#fffbeb !important;border-left:3px solid #F5A623;}
-
-  /* Footer */
-  .rpt-footer{border-top:2px solid #e2e8f0;padding-top:10px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8;}
-  .rpt-footer .rpt-conf{font-style:italic;}
-  .rpt-footer .rpt-page{font-weight:600;}
-
-  /* Signature block */
-  .sig-block{display:flex;gap:60px;margin-top:30px;padding-top:8px;}
-  .sig-line{flex:1;border-top:1px solid #94a3b8;padding-top:6px;font-size:9px;color:#64748b;}
-  .sig-line strong{color:#1e293b;display:block;margin-bottom:2px;}
-
-  @media print{
-    .no-print{display:none!important;}
-    body{padding:0;}
-    .page{padding:0;}
-  }
-</style></head><body>
-<div class="page">
-  <!-- Header -->
-  <div class="rpt-header">
-    <div class="rpt-logo-block">
-      ${logoSrc?`<img src="${logoSrc}" class="rpt-logo" alt="THP">`:''}
-      <div class="rpt-org">The Hunger Project — Ghana<small>Staff Attendance & Leave Management System</small></div>
-    </div>
-    <div class="rpt-meta">
-      <strong>Generated:</strong> ${dateStr} at ${timeStr}<br>
-      <strong>By:</strong> ${generatedBy}<br>
-      <strong>Report ID:</strong> RPT-${Date.now().toString(36).toUpperCase()}
-    </div>
-  </div>
-
-  <!-- Title strip -->
-  <div class="rpt-title-strip">
-    <div>
-      <h1>📊 ${reportTitle}</h1>
-      <div class="rpt-sub">${reportSub}</div>
-    </div>
-    <div class="rpt-period">📅 ${periodLabel}</div>
-  </div>
-
-  <!-- Report body -->
-  ${tbl.outerHTML
-    .replace(/class="badge b-ok"/g,'class="b-present"')
-    .replace(/class="badge b-err"/g,'class="b-absent"')
-    .replace(/class="badge b-active"/g,'class="b-active"')
-    .replace(/class="badge b-early"/g,'class="b-early"')
-    .replace(/background:rgba\(99,102,241,\.15\);color:#4338ca/g,'')
-    .replace(/class="badge"/g,'class="b-leave"')
-    .replace(/class="stage-badge stage-ok"/g,'class="b-approved"')
-    .replace(/class="stage-badge stage-pend"/g,'class="b-pending"')
-    .replace(/background:rgba\(245,166,35,\.15\);color:#d97706/g,'')
-    .replace(/style="background:rgba\(245,166,35,\.08\)"/g,'class="hol-row"')
-  }
-
-  <!-- Signature block -->
-  <div class="sig-block">
-    <div class="sig-line"><strong>Prepared by:</strong>${generatedBy}</div>
-    <div class="sig-line"><strong>Reviewed by:</strong>______________________</div>
-    <div class="sig-line"><strong>Date:</strong>${dateStr}</div>
-  </div>
-
-  <!-- Footer -->
-  <div class="rpt-footer">
-    <div class="rpt-conf">CONFIDENTIAL — For internal use only. The Hunger Project — Ghana.</div>
-    <div class="rpt-page">Page 1 of 1</div>
-  </div>
-</div>
-
-<div class="no-print" style="text-align:center;padding:16px">
-  <button onclick="window.print()" style="padding:10px 28px;font-size:14px;background:#2D3592;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">🖨 Print Report</button>
-  <button onclick="window.close()" style="padding:10px 28px;font-size:14px;background:#ef4444;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;margin-left:10px">✕ Close</button>
-</div>
-</body></html>`);
+    w.document.write(html);
     w.document.close();
   }
 
@@ -2325,7 +2201,115 @@ class App{
 
   dlQR(boxId,fn){const c=document.querySelector('#'+boxId+' canvas');if(!c){toast('QR not ready','err');return;}const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=fn+'_'+Date.now()+'.png';a.click();}
   _bdg(s){if(!s)return'';if(s==='Active')return'<span class="badge b-active">● Active</span>';if(s.includes('Early'))return`<span class="badge b-early">⚠ Early</span>`;return'<span class="badge b-ok">✓ Done</span>';}
-  exportCSV(mode){
+
+  /* ── Report HTML builder (shared by Word, PDF, Print) ── */
+  _buildReportHTML(forExport){
+    const tbl=$('m-report-table');if(!tbl)return'';
+    const isHR=this.user.id===HR_MANAGER_ID;
+    const now=new Date();
+    const dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+    const timeStr=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const fromVal=$('mgr-rep-from')?.value,toVal=$('mgr-rep-to')?.value;
+    const periodLabel=fromVal&&toVal?`${fmtISO(fromVal)} — ${fmtISO(toVal)}`:`${now.toLocaleDateString('en-GB',{month:'long',year:'numeric'})} (Month to Date)`;
+    const reportTitle=isHR?'Staff Attendance & Leave Report':'Staff Attendance Summary Report';
+    const reportSub=isHR?'Includes all clock-in/out records, leave requests, and public holidays':'Present / Absent / On Leave / Holiday status per working day';
+    const generatedBy=this.user.name+' ('+roleLabel(this.user.role)+')';
+    const staffFilter=$('mgr-rep-staff')?.value.trim();
+    const filterNote=staffFilter?`<br><strong>Filter:</strong> "${staffFilter}"`:'';
+
+    return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${reportTitle} — THP-Ghana</title>
+<style>
+  @page{size:A4 landscape;margin:15mm 12mm;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:11px;line-height:1.5;padding:0;}
+  .page{padding:8mm;}
+  .rpt-header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #2D3592;padding-bottom:12px;margin-bottom:6px;}
+  .rpt-logo-block{display:flex;align-items:center;gap:14px;}
+  .rpt-org{font-size:15px;font-weight:700;color:#2D3592;line-height:1.3;}
+  .rpt-org small{display:block;font-size:10px;font-weight:400;color:#64748b;letter-spacing:.5px;text-transform:uppercase;}
+  .rpt-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.6;}
+  .rpt-meta strong{color:#1e293b;}
+  .rpt-title-strip{background:#2D3592;color:#fff;padding:10px 16px;border-radius:6px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .rpt-title-strip h1{font-size:14px;font-weight:700;margin:0;}
+  .rpt-title-strip .rpt-period{font-size:10px;opacity:.9;}
+  .rpt-title-strip .rpt-sub{font-size:9px;opacity:.75;margin-top:2px;}
+  table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px;}
+  th{background:#2D3592;color:#fff;padding:7px 6px;text-align:left;font-weight:600;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;border:1px solid #2D3592;}
+  td{padding:6px;border:1px solid #e2e8f0;vertical-align:top;}
+  tr:nth-child(even) td{background:#f8fafc;}
+  .b-present,.b-ok,.b-done,.b-approved,.badge.b-ok,.stage-badge.stage-ok{background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .b-absent,.b-err,.badge.b-err{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .b-leave,.badge{background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .b-holiday{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .b-active,.badge.b-active{background:#ccfbf1;color:#0f766e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .b-early,.badge.b-early{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .stage-badge.stage-pend,.b-pending{background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .stage-badge.stage-rej{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:600;display:inline-block;}
+  .hol-row td{background:#fffbeb !important;border-left:3px solid #F5A623;}
+  .sig-block{display:flex;gap:60px;margin-top:30px;padding-top:8px;}
+  .sig-line{flex:1;border-top:1px solid #94a3b8;padding-top:6px;font-size:9px;color:#64748b;}
+  .sig-line strong{color:#1e293b;display:block;margin-bottom:2px;}
+  .rpt-footer{border-top:2px solid #e2e8f0;padding-top:10px;margin-top:16px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8;}
+  @media print{.no-print{display:none!important;}}
+</style></head><body>
+<div class="page">
+  <div class="rpt-header">
+    <div class="rpt-logo-block">
+      <div class="rpt-org">The Hunger Project — Ghana<small>Staff Attendance & Leave Management System</small></div>
+    </div>
+    <div class="rpt-meta">
+      <strong>Generated:</strong> ${dateStr} at ${timeStr}<br>
+      <strong>By:</strong> ${generatedBy}<br>
+      <strong>Report ID:</strong> RPT-${Date.now().toString(36).toUpperCase()}${filterNote}
+    </div>
+  </div>
+  <div class="rpt-title-strip">
+    <div><h1>${reportTitle}</h1><div class="rpt-sub">${reportSub}</div></div>
+    <div class="rpt-period">${periodLabel}</div>
+  </div>
+  ${tbl.outerHTML
+    .replace(/style="background:rgba\(245,166,35,\.08\)"/g,'class="hol-row"')
+    .replace(/style="background:rgba\(245,166,35,\.15\);color:#d97706"/g,'class="b-holiday"')
+    .replace(/style="background:rgba\(99,102,241,\.15\);color:#4338ca"/g,'class="b-leave"')
+  }
+  <div class="sig-block">
+    <div class="sig-line"><strong>Prepared by:</strong>${generatedBy}</div>
+    <div class="sig-line"><strong>Reviewed by:</strong>______________________</div>
+    <div class="sig-line"><strong>Date:</strong>${dateStr}</div>
+  </div>
+  <div class="rpt-footer">
+    <div>CONFIDENTIAL — For internal use only. The Hunger Project — Ghana.</div>
+    <div>Page 1</div>
+  </div>
+</div>
+${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
+  <button onclick="window.print()" style="padding:10px 28px;font-size:14px;background:#2D3592;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">🖨 Print Report</button>
+  <button onclick="window.close()" style="padding:10px 28px;font-size:14px;background:#ef4444;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;margin-left:10px">✕ Close</button>
+</div>`}
+</body></html>`;
+  }
+
+  /* ── Export as Word (.doc) ── */
+  exportMgrWord(){
+    const html=this._buildReportHTML(true);
+    if(!html)return toast('No report to export','err');
+    const wordContent='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--></head><body>'+html+'</body></html>';
+    const blob=new Blob(['\ufeff',wordContent],{type:'application/msword'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='THP_Report_'+Date.now()+'.doc';a.click();
+    URL.revokeObjectURL(url);
+    toast('Word document downloaded ✓');
+  }
+
+  /* ── Export as PDF (via print dialog) ── */
+  exportMgrPDF(){
+    const html=this._buildReportHTML(true);
+    if(!html)return toast('No report to export','err');
+    const w=window.open('','_blank');
+    w.document.write(html+'<script>setTimeout(()=>{window.print();},500);<\/script>');
+    w.document.close();
+    toast('Print dialog opened — select "Save as PDF" to download.','info');
+  }
     let recs=this.records.slice();
     if(mode==='staff'||mode==='mgr-my')recs=recs.filter(r=>r.id===this.user.id);
     let csv='Date,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';
