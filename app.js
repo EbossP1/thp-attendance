@@ -2310,6 +2310,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     w.document.close();
     toast('Print dialog opened — select "Save as PDF" to download.','info');
   }
+  exportCSV(mode){
     let recs=this.records.slice();
     if(mode==='staff'||mode==='mgr-my')recs=recs.filter(r=>r.id===this.user.id);
     let csv='Date,Staff ID,Name,Unit,Clock In,Clock Out,Hours,Status\n';
