@@ -2068,10 +2068,13 @@ class App{
   }
 
   /* ── Manager reports ── */
+  _mgrRepStaffSearch(){return ($('mgr-rep-staff')?.value||'').trim().toLowerCase();}
   _mgrRepFilter(recs){
     const from=$('mgr-rep-from')?.value,to=$('mgr-rep-to')?.value;
     if(from)recs=recs.filter(r=>new Date(r.date||r.in)>=new Date(from));
     if(to)recs=recs.filter(r=>new Date(r.date||r.in)<=new Date(to+'T23:59:59'));
+    const q=this._mgrRepStaffSearch();
+    if(q)recs=recs.filter(r=>(r.id||'').toLowerCase().includes(q)||(r.name||'').toLowerCase().includes(q));
     return recs;
   }
   _mgrRepDays(){
@@ -2083,7 +2086,7 @@ class App{
     for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){if(!isWeekend(d))days.push(new Date(d));}
     return days;
   }
-  clearMgrRepDates(){if($('mgr-rep-from'))$('mgr-rep-from').value='';if($('mgr-rep-to'))$('mgr-rep-to').value='';this.renderMgrReport();}
+  clearMgrRepDates(){if($('mgr-rep-from'))$('mgr-rep-from').value='';if($('mgr-rep-to'))$('mgr-rep-to').value='';if($('mgr-rep-staff'))$('mgr-rep-staff').value='';this.renderMgrReport();}
   renderMgrReport(){
     const isHR=this.user.id===HR_MANAGER_ID;
     const isFinance=this.user.id==='THPG/05/2025';
@@ -2122,7 +2125,9 @@ class App{
       body.innerHTML=rows;
     } else {
       const EXCLUDED_UNITS=['National Service','Intern'];
-      const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
+      let staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
+      const q=this._mgrRepStaffSearch();
+      if(q)staffList=staffList.filter(([id,s])=>id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q));
       const allDays=this._mgrRepDays();
       const rows=[];
       allDays.forEach(dt=>{
