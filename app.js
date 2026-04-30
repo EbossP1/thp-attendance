@@ -2217,6 +2217,8 @@ class App{
     const staffFilter=$('mgr-rep-staff')?.value.trim();
     const filterNote=staffFilter?`<br><strong>Filter:</strong> "${staffFilter}"`:'';
 
+    const logoSrc=document.querySelector('.lo-logo')?.src||document.querySelector('img[alt="THP"]')?.src||'';
+
     return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${reportTitle} — THP-Ghana</title>
 <style>
   @page{size:A4 landscape;margin:15mm 12mm;}
@@ -2225,6 +2227,7 @@ class App{
   .page{padding:8mm;}
   .rpt-header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #2D3592;padding-bottom:12px;margin-bottom:6px;}
   .rpt-logo-block{display:flex;align-items:center;gap:14px;}
+  .rpt-logo{height:52px;width:auto;}
   .rpt-org{font-size:15px;font-weight:700;color:#2D3592;line-height:1.3;}
   .rpt-org small{display:block;font-size:10px;font-weight:400;color:#64748b;letter-spacing:.5px;text-transform:uppercase;}
   .rpt-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.6;}
@@ -2255,6 +2258,7 @@ class App{
 <div class="page">
   <div class="rpt-header">
     <div class="rpt-logo-block">
+      ${logoSrc?`<img src="${logoSrc}" class="rpt-logo" alt="THP">`:''}
       <div class="rpt-org">The Hunger Project — Ghana<small>Staff Attendance & Leave Management System</small></div>
     </div>
     <div class="rpt-meta">
