@@ -123,7 +123,7 @@
       <button class="nav-item"        onclick="showPanel('p-profile','sb-staff',event);APP._renderProfileForm('')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item"        onclick="showPanel('p-chpw','sb-staff',event)"><span class="ico">🔑</span>Change Password</button>
       <div class="sb-bottom">
-        <div class="sync-pill no-url" id="st-sync-chip">⬤ Local only</div>
+        <div class="sync-pill no-url" id="st-sync-chip" style="display:none">⬤ Local only</div>
         <div class="user-chip">
           <div class="av" id="st-av" style="background:#2D3592">U</div>
           <div><div class="u-name" id="st-name">User</div><div class="u-role">Employee</div></div>
@@ -344,7 +344,7 @@
       <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
       <div class="sb-bottom">
-        <div class="sync-pill no-url" id="mgr-sync-chip">⬤ Local only</div>
+        <div class="sync-pill no-url" id="mgr-sync-chip" style="display:none">⬤ Local only</div>
         <div class="user-chip">
           <div class="av" id="mgr-av" style="background:#F5A623">M</div>
           <div><div class="u-name" id="mgr-name">Manager</div><div class="u-role" style="color:var(--gold)">Manager</div></div>
