@@ -18,21 +18,40 @@
 ═══════════════════════════════════════════════════════════════ */
 
 'use strict';
-const { createClient } = supabase;
+
+/* ── Robust Supabase initialization ── */
+let createClient;
+if (typeof window !== 'undefined' && window.supabase && window.supabase.createClient) {
+  createClient = window.supabase.createClient;
+} else if (typeof supabase !== 'undefined' && supabase.createClient) {
+  createClient = supabase.createClient;
+} else {
+  console.error('[THP] Supabase CDN not loaded. Place <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> BEFORE app.js in your HTML.');
+}
 
 /* ═══════════════════════════════════════════════
    0. CONFIGURATION — UPDATE THESE
 ═══════════════════════════════════════════════ */
 const SUPABASE_URL  = 'https://jhpqzkwzxprsnaczkyjq.supabase.co';
-const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpocHF6a3d6eHByc25hY3preWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTE4NTMsImV4cCI6MjA4OTc2Nzg1M30.GKJz9EhxGP1wTQBiufLoVLxWOstx-9Z0MPWHxj2c8VM';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpocHF6
 
 /* Secondary client for admin staff activation (doesn't steal session) */
-const signupClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false }
-});
+let signupClient = null;
+let supabase = null;
 
-/* Primary client (handles current user session) */
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+if (createClient) {
+  try {
+    signupClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('[THP] Supabase clients initialized successfully');
+  } catch (e) {
+    console.error('[THP] Failed to initialize Supabase:', e);
+  }
+} else {
+  console.error('[THP] createClient not available. Database functions will not work.');
+}
 
 const GAS_URL_KEY = 'thp_script_url';
 const GAS_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxYjyPS7HHfVCheKSUi-gYm_a02tpxhz4aleReROhkvE8Zv3dFxdkKAJzH16gHcIsD77g/exec';
@@ -154,6 +173,7 @@ class AuthManager {
 
   /* ── Check if we have a valid Supabase session ── */
   async getSession() {
+    if (!supabase) return null;
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) console.warn('getSession error:', error.message);
     return session;
@@ -161,6 +181,7 @@ class AuthManager {
 
   /* ── Get current auth user ── */
   async getUser() {
+    if (!supabase) return null;
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) return null;
     return user;
@@ -207,6 +228,7 @@ class AuthManager {
 
     /* If staff has auth_user_id, use Supabase Auth */
     if (staff.auth_user_id) {
+      if (!supabase) return { success: false, error: 'Database library not loaded' };
       const email = staff.email || `${id.toLowerCase()}@thp-ghana.local`;
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -284,7 +306,7 @@ class AuthManager {
 
   /* ── Logout ── */
   async logout() {
-    if (!this.legacyMode) {
+    if (!this.legacyMode && supabase) {
       await supabase.auth.signOut();
     }
     clearLegacySession();
@@ -297,7 +319,7 @@ class AuthManager {
   async validateSession() {
     /* Try Supabase Auth first */
     const session = await this.getSession();
-    if (session) {
+    if (session && supabase) {
       const { data: staff, error } = await supabase
         .from('staff')
         .select('*')
@@ -335,6 +357,7 @@ class AuthManager {
   /* ── Activate Staff (Admin only) ── */
   async activateStaff(staffId, email, tempPassword) {
     if (!email || !tempPassword) return { success: false, error: 'Email and temp password required' };
+    if (!signupClient) return { success: false, error: 'Database library not loaded' };
     /* Use signupClient so admin stays logged in */
     const { data, error } = await signupClient.auth.signUp({
       email,
@@ -398,6 +421,7 @@ class AuthManager {
     }
 
     /* Supabase Auth mode */
+    if (!supabase) return { success: false, error: 'Database library not loaded' };
     const { error } = await supabase.auth.updateUser({ password: newPass });
     if (error) return { success: false, error: error.message };
     /* Also update legacy column for safety */
@@ -424,7 +448,7 @@ class AuthManager {
     await supabase.from('staff').update({ password: tempPass }).eq('id', staffId);
 
     /* If activated, also send Supabase password reset email */
-    if (staff.auth_user_id) {
+    if (staff.auth_user_id && supabase) {
       await supabase.auth.resetPasswordForEmail(email);
     }
 
@@ -461,6 +485,7 @@ class DataManager {
 
   /* ── Staff ── */
   async getStaff(query = {}) {
+    if (!supabase) { console.error('[THP] getStaff: supabase null'); return []; }
     let q = supabase.from('staff').select('*');
     if (query.unit) q = q.eq('unit', query.unit);
     if (query.status) q = q.eq('status', query.status);
@@ -472,6 +497,7 @@ class DataManager {
   }
 
   async saveStaff(id, data) {
+    if (!supabase) { throw new Error('Database not connected'); }
     const row = {
       id,
       name: data.name,
@@ -491,12 +517,14 @@ class DataManager {
   }
 
   async deleteStaff(id) {
+    if (!supabase) { throw new Error('Database not connected'); }
     const { error } = await supabase.from('staff').delete().eq('id', id);
     if (error) throw new Error('Delete staff failed: ' + error.message);
     return { success: true };
   }
 
   async updateProfile(id, data) {
+    if (!supabase) { DataManager.showBar('error', 'Database not connected'); return { success: false }; }
     DataManager.showBar('syncing', 'Updating profile…');
     const { data: result, error } = await supabase.from('staff').update({
       email: data.email || '',
@@ -510,6 +538,7 @@ class DataManager {
 
   /* ── Attendance ── */
   async getAttendance(filters = {}) {
+    if (!supabase) { console.error('[THP] getAttendance: supabase null'); return []; }
     let q = supabase.from('attendance').select('*');
     if (filters.staffId) q = q.eq('staff_id', filters.staffId);
     if (filters.unit) q = q.eq('unit', filters.unit);
@@ -523,6 +552,7 @@ class DataManager {
   }
 
   async saveRecord(rec) {
+    if (!supabase) { DataManager.showBar('error', 'Database not connected'); return { success: false }; }
     DataManager.showBar('syncing', 'Saving…');
     /* Duplicate check */
     const { data: existing } = await supabase
@@ -552,6 +582,7 @@ class DataManager {
   }
 
   async updateRecord(rec) {
+    if (!supabase) { DataManager.showBar('error', 'Database not connected'); return { success: false }; }
     DataManager.showBar('syncing', 'Updating…');
     /* Find by staff_id + clock_in */
     const { data: rows } = await supabase
@@ -582,6 +613,7 @@ class DataManager {
 
   /* ── Leave ── */
   async getLeaveRequests(filters = {}) {
+    if (!supabase) { console.error('[THP] getLeaveRequests: supabase null'); return []; }
     let q = supabase.from('leave_requests').select('*');
     if (filters.staffId) q = q.eq('staff_id', filters.staffId);
     if (filters.status) q = q.eq('overall_status', filters.status);
@@ -593,6 +625,7 @@ class DataManager {
   }
 
   async applyLeave(leave) {
+    if (!supabase) { return { success: false, error: 'Database not connected' }; }
     const { data, error } = await supabase.from('leave_requests').insert({
       id: leave.id,
       staff_id: leave.staffId,
@@ -620,6 +653,7 @@ class DataManager {
   }
 
   async updateLeave(id, status, note, stage, extraEmailData) {
+    if (!supabase) { return { success: false }; }
     const isFinal = stage === 'final' || stage === 'hr';
     const update = isFinal
       ? { final_approver_status: status, final_approver_note: note || '', overall_status: status, updated_at: new Date().toISOString() }
@@ -634,12 +668,14 @@ class DataManager {
 
   /* ── Holidays ── */
   async getHolidays() {
+    if (!supabase) { console.error('[THP] getHolidays: supabase null'); return { success: false }; }
     const { data, error } = await supabase.from('holidays').select('*').order('date');
     if (error) return { success: false };
     return { success: true, holidays: (data || []).map(h => ({ id: h.id, name: h.name, date: h.date, type: h.type, recurring: h.recurring, year: h.year, createdAt: h.created_at })) };
   }
 
   async saveHoliday(holiday) {
+    if (!supabase) { return { success: false }; }
     const row = {
       id: holiday.id || ('HOL' + Date.now()),
       name: holiday.name,
@@ -654,12 +690,14 @@ class DataManager {
   }
 
   async deleteHoliday(id) {
+    if (!supabase) { return { success: false }; }
     const { error } = await supabase.from('holidays').delete().eq('id', id);
     return { success: !error };
   }
 
   /* ── Settings ── */
   async getSettings() {
+    if (!supabase) { console.error('[THP] getSettings: supabase null'); return {}; }
     const { data, error } = await supabase.from('settings').select('*');
     if (error) return {};
     const settings = {}; (data || []).forEach(r => settings[r.key] = r.value);
@@ -668,6 +706,11 @@ class DataManager {
 
   /* ── Hydrate ── */
   async hydrate() {
+    if (!supabase) {
+      console.error('[THP] hydrate() called but supabase client is null');
+      return { success: false, error: 'Database not connected' };
+    }
+    try {
     const [staffRows, attRows, leaveRows, holRows, setRows] = await Promise.all([
       this.getStaff(),
       this.getAttendance({ limit: 5000 }),
@@ -712,10 +755,15 @@ class DataManager {
     localStorage.setItem('thp_holidays', JSON.stringify(holidays));
 
     return { success: true, staff, records, leave, holidays, settings };
+    } catch (e) {
+      console.error('[THP] hydrate() failed:', e);
+      return { success: false, error: e.message };
+    }
   }
 
   /* ── Sick Note Upload ── */
   async uploadSickNote(leaveId, fileName, fileData, mimeType) {
+    if (!supabase) { return { success: false }; }
     try {
       const byteChars = atob(fileData);
       const byteArr = new Uint8Array(byteChars.length);
@@ -753,6 +801,7 @@ class DataManager {
   }
 
   async testConnection() {
+    if (!supabase) { const el = $('sync-result'); if (el) el.innerHTML = '<span style="color:var(--red)">❌ Supabase library not loaded.</span>'; return; }
     const el = $('sync-result'); if (el) el.textContent = 'Testing Supabase…';
     const { data, error } = await supabase.from('staff').select('id').limit(1);
     if (!error) {
@@ -1043,7 +1092,13 @@ class App {
     showLoader('Loading your data…');
 
     const data = await DATA.hydrate();
-    if (data && data.success) {
+    if (!data) {
+      console.error('[THP] _afterLogin: DATA.hydrate() returned null');
+      toast('Failed to load data from server', 'err');
+      hideLoader();
+      return;
+    }
+    if (data.success) {
       this.staff = data.staff || {};
       this.records = data.records || [];
       this.leave = data.leave || [];
@@ -2570,7 +2625,13 @@ const APP = new App();
     APP.user = result.user;
     const loT = $('lo-text'); if (loT) loT.textContent = 'Loading your data…';
     const data = await DATA.hydrate();
-    if (data && data.success) {
+    if (!data) {
+      console.error('[THP] _afterLogin: DATA.hydrate() returned null');
+      toast('Failed to load data from server', 'err');
+      hideLoader();
+      return;
+    }
+    if (data.success) {
       APP.staff = data.staff || {};
       APP.records = data.records || [];
       APP.leave = data.leave || [];
