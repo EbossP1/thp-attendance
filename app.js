@@ -18,7 +18,7 @@
 ═══════════════════════════════════════════════════════════════ */
 
 'use strict';
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = supabase;
 
 /* ═══════════════════════════════════════════════
    0. CONFIGURATION — UPDATE THESE
@@ -45,6 +45,7 @@ const fx = (n, d = 2) => parseFloat(n || 0).toFixed(d);
 const fmtT = iso => { if (!iso) return '--'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
 const fmtD = iso => { if (!iso) return '--'; const d = new Date(iso); if (isNaN(d)) return iso; return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const fmtISO = iso => { if (!iso) return '--'; if (typeof iso === 'string' && iso.match(/^\d{1,2}\s\w{3}\s\d{4}$/)) return iso; const [y, m, dd] = (iso + '').split('-'); if (!y || !m || !dd) return iso; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
+const dbDate = iso => iso ? iso.slice(0,10) : '';
 const fmtDT = iso => { if (!iso) return '--'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
 
 /* ═══════════════════════════════════════════════
@@ -318,10 +319,6 @@ class AuthManager {
     const legacy = getLegacySession();
     if (!legacy) return { success: false, error: 'No session' };
 
-    const { data: rows } = await supabase
-      .rpc('authenticate_staff', { p_staff_id: legacy.id, p_password: legacy.token });
-    /* Legacy token isn't the password, so this will fail unless we stored it.
-       Instead, just check if legacy session is valid by looking up staff */
     const { data: staff } = await supabase
       .from('staff')
       .select('*')
@@ -500,14 +497,14 @@ class DataManager {
   }
 
   async updateProfile(id, data) {
-    this.showBar('syncing', 'Updating profile…');
+    DataManager.showBar('syncing', 'Updating profile…');
     const { data: result, error } = await supabase.from('staff').update({
       email: data.email || '',
       phone: data.phone || '',
       emergency_contact: data.emergencyContact || ''
     }).eq('id', id).select().single();
-    if (error) { this.showBar('error', 'Update failed'); return { success: false }; }
-    this.showBar('synced', 'Profile updated ✓');
+    if (error) { DataManager.showBar('error', 'Update failed'); return { success: false }; }
+    DataManager.showBar('synced', 'Profile updated ✓');
     return { success: true, data: result };
   }
 
@@ -526,7 +523,7 @@ class DataManager {
   }
 
   async saveRecord(rec) {
-    this.showBar('syncing', 'Saving…');
+    DataManager.showBar('syncing', 'Saving…');
     /* Duplicate check */
     const { data: existing } = await supabase
       .from('attendance')
@@ -535,7 +532,7 @@ class DataManager {
       .eq('date', rec.date)
       .limit(1);
     if (existing && existing.length) {
-      this.showBar('error', 'Already clocked in today');
+      DataManager.showBar('error', 'Already clocked in today');
       return { success: false, duplicate: true };
     }
     const { data, error } = await supabase.from('attendance').insert({
@@ -549,13 +546,13 @@ class DataManager {
       status: rec.status || 'Active',
       work_mode: rec.work_mode || 'Office'
     }).select().single();
-    if (error) { this.showBar('error', 'Save failed: ' + error.message); return { success: false }; }
-    this.showBar('synced', 'Saved ✓');
+    if (error) { DataManager.showBar('error', 'Save failed: ' + error.message); return { success: false }; }
+    DataManager.showBar('synced', 'Saved ✓');
     return { success: true, data };
   }
 
   async updateRecord(rec) {
-    this.showBar('syncing', 'Updating…');
+    DataManager.showBar('syncing', 'Updating…');
     /* Find by staff_id + clock_in */
     const { data: rows } = await supabase
       .from('attendance')
@@ -564,7 +561,7 @@ class DataManager {
       .eq('clock_in', rec.in)
       .limit(1);
     if (!rows || !rows.length) {
-      this.showBar('error', 'Record not found');
+      DataManager.showBar('error', 'Record not found');
       return { success: false };
     }
     const { error } = await supabase.from('attendance').update({
@@ -572,8 +569,8 @@ class DataManager {
       hours: rec.hours || null,
       status: rec.status || ''
     }).eq('id', rows[0].id);
-    if (error) { this.showBar('error', 'Update failed'); return { success: false }; }
-    this.showBar('synced', 'Updated ✓');
+    if (error) { DataManager.showBar('error', 'Update failed'); return { success: false }; }
+    DataManager.showBar('synced', 'Updated ✓');
     return { success: true };
   }
 
@@ -618,7 +615,7 @@ class DataManager {
     }).select().single();
     if (error || !data) return { success: false, error: error?.message };
     /* Email via GAS */
-    this.gasPost({ action: 'applyLeave', leave: { ...leave, supervisorEmail: leave._supervisorEmail || '', finalApproverEmail: leave._finalApproverEmail || '' } }).catch(() => { });
+    DataManager.gasPost({ action: 'applyLeave', leave: { ...leave, supervisorEmail: leave._supervisorEmail || '', finalApproverEmail: leave._finalApproverEmail || '' } }).catch(() => { });
     return { success: true, leaveId: leave.id, data };
   }
 
@@ -631,7 +628,7 @@ class DataManager {
         : { supervisor_status: status, supervisor_note: note || '', final_approver_status: 'Pending', overall_status: 'Pending', updated_at: new Date().toISOString() };
     const { error } = await supabase.from('leave_requests').update(update).eq('id', id);
     if (error) return { success: false };
-    this.gasPost({ action: 'updateLeave', id, status, note, stage, ...(extraEmailData || {}) }).catch(() => { });
+    DataManager.gasPost({ action: 'updateLeave', id, status, note, stage, ...(extraEmailData || {}) }).catch(() => { });
     return { success: true };
   }
 
@@ -990,7 +987,7 @@ class App {
     if (isWeekend(now)) return toast('Not allowed on weekends.', 'err');
     const dept = $('qr-dept').value; if (!dept) return toast('Select unit', 'err');
     const s = this.staff[this.qrSid]; if (!s) return toast('Staff not found', 'err');
-    const rec = { date: fmtD(now.toISOString()), id: this.qrSid, name: s.name, unit: s.unit || dept, in: now.toISOString(), out: null, hours: null, status: 'Active' };
+    const rec = { date: todayISO(), id: this.qrSid, name: s.name, unit: s.unit || dept, in: now.toISOString(), out: null, hours: null, status: 'Active' };
     const r = await DATA.saveRecord(rec);
     if (r && r.success) { this.records.push(rec); this._cacheR(); $('qr-msg').innerHTML = '<span style="color:var(--green)">✅ Clocked in at ' + fmtT(now.toISOString()) + '</span>'; }
     else { toast('Failed to clock in — server error', 'err'); }
@@ -1215,13 +1212,13 @@ class App {
     const todayStr = todayISO();
     const alreadyToday = this.records.find(r => r.id === this.user.id && ((r.date || r.in || '').slice(0, 10) === todayStr || (r.in && new Date(r.in).toISOString().slice(0, 10) === todayStr)));
     if (alreadyToday) return _bail('Already clocked in today.');
-    const serverCheck = await DATA.getAttendance({ staffId: this.user.id, dateFrom: fmtD(now.toISOString()), dateTo: fmtD(now.toISOString()), limit: 1 });
+    const serverCheck = await DATA.getAttendance({ staffId: this.user.id, dateFrom: todayISO(), dateTo: todayISO(), limit: 1 });
     if (serverCheck && serverCheck.length) return _bail('Already clocked in today (server confirmed).');
     const onLeave = leaveOnDate(this.leave, this.user.id, todayStr);
     if (onLeave) return _bail(`On approved ${onLeave.type} today.`, 'info');
 
     const unit = (this.user.unit || '').trim();
-    const rec = { date: fmtD(now.toISOString()), id: this.user.id, name: this.user.name, unit, in: now.toISOString(), out: null, hours: null, status: 'Active', work_mode: workMode };
+    const rec = { date: todayISO(), id: this.user.id, name: this.user.name, unit, in: now.toISOString(), out: null, hours: null, status: 'Active', work_mode: workMode };
     const result = await DATA.saveRecord(rec);
     if (!result || !result.success) { if (ciBtn) ciBtn.disabled = false; toast('Server error — try again', 'err'); return; }
 
@@ -1256,7 +1253,7 @@ class App {
       if (already) continue;
       const clockIn = new Date(day); clockIn.setHours(8, 0, 0, 0);
       const clockOut = new Date(day); clockOut.setHours(17, 0, 0, 0);
-      const rec = { date: fmtD(clockIn.toISOString()), id: this.user.id, name: this.user.name, unit, in: clockIn.toISOString(), out: clockOut.toISOString(), hours: '9.00', status: 'Completed (Work Trip — ' + dest + ')', work_mode: 'Work Trip' };
+      const rec = { date: dbDate(clockIn.toISOString()), id: this.user.id, name: this.user.name, unit, in: clockIn.toISOString(), out: clockOut.toISOString(), hours: '9.00', status: 'Completed (Work Trip — ' + dest + ')', work_mode: 'Work Trip' };
       const r = await DATA.saveRecord(rec);
       if (r && r.success) { this.records.push(rec); added++; }
     }
@@ -1357,7 +1354,7 @@ class App {
         const limit = LEAVE_LIMITS[t]; const used = this._leaveDaysUsed(this.user.id, t);
         if (limit === null) { const sub = t === 'Compensatory Leave' ? 'As certified by Country Leader' : 'As certified by medical professional'; return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div style="font-size:.72rem;color:var(--text2)">${sub}</div></div><div class="bal-num">${used} days used</div></div>`; }
         const rem = Math.max(0, limit - used); const pct = Math.round((used / limit) * 100);
-        return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--gold)' : 'var(--green)'}"</div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
+        return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--gold)' : 'var(--green)'}"></div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
       }).join('');
   }
   _setMobTab(navId, idx) { const nav = $(navId); if (!nav) return; nav.querySelectorAll('.mob-tab').forEach((t, i) => t.classList.toggle('active', i === idx)); }
@@ -1443,7 +1440,7 @@ class App {
         const limit = LEAVE_LIMITS[t]; const used = this._leaveDaysUsed(this.user.id, t);
         if (limit === null) { const sub = t === 'Compensatory Leave' ? 'As certified by Country Leader' : 'As certified by medical professional'; return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div style="font-size:.72rem;color:var(--text2)">${sub}</div></div><div class="bal-num">${used} used</div></div>`; }
         const rem = Math.max(0, limit - used); const pct = Math.round((used / limit) * 100);
-        return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--gold)' : 'var(--green)'}"</div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
+        return `<div class="bal-row"><div class="bal-icon">${icons[t] || '📋'}</div><div class="bal-info"><div class="bal-lbl">${t}</div><div class="bal-trk"><div class="bal-fill" style="width:${pct}%;background:${pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--gold)' : 'var(--green)'}"></div></div></div><div class="bal-num">${rem}/${limit} left</div></div>`;
       }).join('');
     this._filterLeaveByGender();
   }
@@ -2559,15 +2556,14 @@ const APP = new App();
    9. SESSION RESTORE — Supabase Auth + Legacy Fallback
 ═══════════════════════════════════════════════ */
 (async function restoreSession() {
+  const loginEl = $('login-view');
   try {
     showLoader('Verifying your session…');
-    const loginEl = $('login-view'); if (loginEl) loginEl.style.display = 'none';
+    if (loginEl) loginEl.style.display = 'none';
 
     const result = await AUTH.validateSession();
     if (!result || !result.success) {
       clearLegacySession();
-      hideLoader();
-      if (loginEl) loginEl.style.display = '';
       return;
     }
 
@@ -2641,7 +2637,16 @@ const APP = new App();
         }
       } catch (e) { }
     }, 60000);
-  } catch (e) { console.error('Session restore error:', e); clearLegacySession(); hideLoader(); }
+  } catch (e) {
+    console.error('Session restore error:', e);
+    clearLegacySession();
+    showView('login-view');
+  } finally {
+    hideLoader();
+    if (loginEl && (!$('staff-view')?.classList.contains('active') && !$('manager-view')?.classList.contains('active') && !$('admin-view')?.classList.contains('active'))) {
+      loginEl.style.display = '';
+    }
+  }
 })();
 
 /* Legacy alias so HTML onclick="SYNC.xxx" still works during transition */
