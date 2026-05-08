@@ -813,15 +813,45 @@ class DataManager {
     }
   }
 
+  static async testGasConnection() {
+    const url = DataManager.getGasUrl();
+    if (!url || url === GAS_DEFAULT_URL) return { ok: false, error: 'No URL configured' };
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ action: 'ping' }), redirect: 'follow' });
+      if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+      const text = await r.text();
+      try { const j = JSON.parse(text); return { ok: true, resp: j }; } catch (e) { return { ok: true, resp: text }; }
+    } catch (e) { return { ok: false, error: e.message || 'Network error' }; }
+  }
+
   saveUrl(inputId) {
-    const url = $(inputId).value.trim();
+    const inp = $(inputId);
+    if (!inp) { console.error('[THP] saveUrl: input #' + inputId + ' not found'); return toast('Input field missing', 'err'); }
+    const url = inp.value.trim();
     if (!url) return toast('Please enter a URL', 'err');
     if (!url.includes('script.google.com')) return toast('Not a valid Apps Script URL', 'err');
     DataManager.setGasUrl(url);
     if ($('script-url-input')) $('script-url-input').value = url;
-    toast('GAS URL saved');
+    if ($('banner-url')) $('banner-url').value = url;
+    toast('URL saved — testing connection…', 'info');
+    DataManager.testGasConnection().then(result => {
+      if (result.ok) {
+        toast('Connected to Google Apps Script!', 'ok');
+        if ($('conn-badge')) { $('conn-badge').className = 'badge b-ok'; $('conn-badge').textContent = 'Connected'; }
+        if (inputId === 'banner-url' && $('setup-banner')) {
+          $('setup-banner').style.display = 'none';
+          localStorage.setItem('thp_banner_dismissed', '1');
+        }
+      } else {
+        toast('URL saved but connection failed: ' + result.error, 'err');
+        if ($('conn-badge')) { $('conn-badge').className = 'badge b-warn'; $('conn-badge').textContent = 'URL saved, connection failed'; }
+      }
+    });
   }
-  dismissBanner() { $('setup-banner').style.display = 'none'; localStorage.setItem('thp_banner_dismissed', '1'); }
+  dismissBanner() {
+    if ($('setup-banner')) $('setup-banner').style.display = 'none';
+    localStorage.setItem('thp_banner_dismissed', '1');
+  }
 }
 
 const DATA = new DataManager();
@@ -997,12 +1027,15 @@ class App {
   _saveL() { this._cacheL(); }
 
   _initBanner() {
-    if (!DataManager.getGasUrl()) DataManager.setGasUrl(GAS_DEFAULT_URL);
+    const savedUrl = DataManager.getGasUrl();
+    if (!savedUrl) DataManager.setGasUrl(GAS_DEFAULT_URL);
     if ($('script-url-input')) $('script-url-input').value = DataManager.getGasUrl();
     if ($('banner-url')) $('banner-url').value = DataManager.getGasUrl();
-    /* Only hide banner if user previously dismissed it */
+    /* Show banner if user never configured a real URL, even if previously "dismissed" */
     const dismissed = localStorage.getItem('thp_banner_dismissed') === '1';
-    if ($('setup-banner')) $('setup-banner').style.display = dismissed ? 'none' : 'flex';
+    const hasRealUrl = savedUrl && savedUrl !== GAS_DEFAULT_URL;
+    const showBanner = !dismissed || !hasRealUrl;
+    if ($('setup-banner')) $('setup-banner').style.display = showBanner ? 'flex' : 'none';
     DATA.updateChips();
   }
 
@@ -2715,6 +2748,7 @@ const APP = new App();
 const SYNC = {
   updateChips: () => DATA.updateChips(),
   testConnection: () => DATA.testConnection(),
+  testGasConnection: () => DataManager.testGasConnection().then(r => r.ok ? toast('GAS connection OK', 'ok') : toast('GAS connection failed: ' + r.error, 'err')),
   saveUrl: (id) => DATA.saveUrl(id),
   dismissBanner: () => DATA.dismissBanner(),
   getGasUrl: () => DataManager.getGasUrl(),
