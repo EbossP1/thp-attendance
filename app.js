@@ -817,7 +817,7 @@ class DataManager {
     const url = $(inputId).value.trim();
     if (!url) return toast('Please enter a URL', 'err');
     if (!url.includes('script.google.com')) return toast('Not a valid Apps Script URL', 'err');
-    this.setGasUrl(url);
+    DataManager.setGasUrl(url);
     if ($('script-url-input')) $('script-url-input').value = url;
     toast('GAS URL saved');
   }
@@ -1000,8 +1000,9 @@ class App {
     if (!DataManager.getGasUrl()) DataManager.setGasUrl(GAS_DEFAULT_URL);
     if ($('script-url-input')) $('script-url-input').value = DataManager.getGasUrl();
     if ($('banner-url')) $('banner-url').value = DataManager.getGasUrl();
-    $('setup-banner').style.display = 'none';
-    localStorage.setItem('thp_banner_dismissed', '1');
+    /* Only hide banner if user previously dismissed it */
+    const dismissed = localStorage.getItem('thp_banner_dismissed') === '1';
+    if ($('setup-banner')) $('setup-banner').style.display = dismissed ? 'none' : 'flex';
     DATA.updateChips();
   }
 
