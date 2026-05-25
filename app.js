@@ -439,7 +439,6 @@ const API={
       {name:'Good Friday',date:iso(gf),type:'fixed',recurring:'yes'},
       {name:'Easter Monday',date:iso(em),type:'fixed',recurring:'yes'},
       {name:'May Day',date:year+'-05-01',type:'fixed',recurring:'yes'},
-      {name:'African Union Day',date:year+'-05-25',type:'fixed',recurring:'yes'},
       {name:'Republic Day',date:year+'-07-01',type:'fixed',recurring:'yes'},
       {name:"Founders' Day",date:year+'-08-04',type:'fixed',recurring:'yes'},
       {name:'Kwame Nkrumah Memorial Day',date:year+'-09-21',type:'fixed',recurring:'yes'},
@@ -666,7 +665,6 @@ function ghBuiltinHolidayISOs(year){
     iso(gf),                       // Good Friday
     iso(em),                       // Easter Monday
     `${year}-05-01`,               // May Day
-    `${year}-05-25`,               // African Union Day
     `${year}-07-01`,               // Republic Day
     `${year}-08-04`,               // Founders Day
     `${year}-09-21`,               // Kwame Nkrumah Memorial Day
@@ -694,7 +692,6 @@ function ghHolidayNames(year){
     [iso(gf)]:'Good Friday',
     [iso(em)]:'Easter Monday',
     [`${year}-05-01`]:'May Day',
-    [`${year}-05-25`]:'African Union Day',
     [`${year}-07-01`]:'Republic Day',
     [`${year}-08-04`]:"Founders' Day",
     [`${year}-09-21`]:'Kwame Nkrumah Memorial Day',
