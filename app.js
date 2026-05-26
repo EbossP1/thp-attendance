@@ -302,9 +302,19 @@ const API={
       id,name:data.name,unit:(data.unit||'').trim(),role:data.role||'staff',
       password:data.pass,avatar_color:data.color||'',email:data.email||'',
       gender:data.gender||'male',supervisor:data.supervisor||'',
-      phone:data.phone||'',emergency_contact:data.emergencyContact||''
+      phone:data.phone||'',emergency_contact:data.emergencyContact||'',
+      contract_start:data.contractStart||null,contract_end:data.contractEnd||null
     }]);
     return r?{success:true}:{success:false};
+  },
+  /* ── Update only contract dates ── */
+  async updateContract(id,start,end){
+    this.showBar('syncing','Saving contract…');
+    const r=await this._update('staff','id=eq.'+encodeURIComponent(id),{
+      contract_start:start||null,contract_end:end||null
+    });
+    if(r!==null){this.showBar('synced','Contract saved ✓');return{success:true};}
+    this.showBar('error','Save failed');return{success:false};
   },
   async deleteStaff(id){
     await this._delete('staff','id=eq.'+encodeURIComponent(id));
@@ -524,7 +534,8 @@ const API={
     (staffRows||[]).forEach(s=>{
       staff[s.id]={name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',pass:s.password,
         color:s.avatar_color||'',email:s.email||'',gender:s.gender||'male',
-        supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||''};
+        supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||'',
+        contractStart:s.contract_start||'',contractEnd:s.contract_end||''};
     });
 
     // Transform attendance rows
@@ -965,6 +976,7 @@ class App{
       setTimeout(()=>{
         this.renderAdmin();this._renderDash();this._renderStaffGrid();this._renderReports();this.renderAdminLeave();this._updateNotifBadges();
         this._populateSupervisorDropdown();this._initEntQR();this.renderAdminHolidays();
+        this._checkContractReminders();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
         hideLoader();
       },100);
@@ -985,6 +997,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
+        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');this._checkContractReminders();}
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -2495,6 +2508,126 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ═══════════════════════════════════════════
+     STAFF CONTRACT REMINDERS
+     Visible to Admin, Edna (HR), and Agatha (CL)
+     Excludes Interns and National Service personnel
+  ═══════════════════════════════════════════ */
+  _contractFlag(endDate){
+    // Returns {cls, label, days} based on days until contract end
+    if(!endDate)return{cls:'none',label:'No contract date',days:null};
+    const end=new Date(endDate);if(isNaN(end))return{cls:'none',label:'Invalid date',days:null};
+    const now=new Date();now.setHours(0,0,0,0);
+    const days=Math.round((end-now)/86400000);
+    if(days<0)return{cls:'red',label:'⚠ Expired '+Math.abs(days)+'d ago',days};
+    if(days<=30)return{cls:'red',label:'🔴 Expires in '+days+'d',days};
+    if(days<=90)return{cls:'amber',label:'🟠 Expires in '+days+'d',days};
+    return{cls:'green',label:'🟢 '+days+'d remaining',days};
+  }
+  renderContracts(prefix){
+    const p=prefix||'a-';
+    const body=$(p+'contracts-body');if(!body)return;
+    const summary=$(p+'contract-summary');
+    const q=($(p+'contract-search')?.value||'').trim().toLowerCase();
+    const EXCLUDED=['intern','national service'];
+    // Build contract list — exclude interns & national service
+    let list=Object.entries(this.staff).filter(([id,s])=>{
+      const unit=(s.unit||'').toLowerCase();
+      const role=(s.role||'').toLowerCase();
+      if(EXCLUDED.some(x=>unit.includes(x)||role.includes(x)))return false;
+      return true;
+    });
+    if(q)list=list.filter(([id,s])=>id.toLowerCase().includes(q)||(s.name||'').toLowerCase().includes(q));
+    // Sort: soonest expiry first, no-date staff last
+    list.sort((a,b)=>{
+      const ea=a[1].contractEnd,eb=b[1].contractEnd;
+      if(!ea&&!eb)return a[1].name.localeCompare(b[1].name);
+      if(!ea)return 1;if(!eb)return -1;
+      return new Date(ea)-new Date(eb);
+    });
+    // Summary counts
+    let red=0,amber=0,green=0,nodate=0;
+    list.forEach(([id,s])=>{const f=this._contractFlag(s.contractEnd);if(f.cls==='red')red++;else if(f.cls==='amber')amber++;else if(f.cls==='green')green++;else nodate++;});
+    if(summary)summary.innerHTML=
+      `<div class="cs-box"><div class="cs-num" style="color:#dc2626">${red}</div><div class="cs-lbl">Expiring / Expired</div></div>`+
+      `<div class="cs-box"><div class="cs-num" style="color:#d97706">${amber}</div><div class="cs-lbl">Within 90 Days</div></div>`+
+      `<div class="cs-box"><div class="cs-num" style="color:#16a34a">${green}</div><div class="cs-lbl">Active</div></div>`+
+      `<div class="cs-box"><div class="cs-num" style="color:var(--text3)">${nodate}</div><div class="cs-lbl">No Date Set</div></div>`;
+    if(!list.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📭</div>No staff found</div></td></tr>';return;}
+    body.innerHTML=list.map(([id,s])=>{
+      const f=this._contractFlag(s.contractEnd);
+      const start=s.contractStart?fmtISO(s.contractStart):'—';
+      const end=s.contractEnd?fmtISO(s.contractEnd):'—';
+      return `<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td>`+
+        `<td style="font-size:.8rem">${s.unit||'—'}</td>`+
+        `<td style="font-size:.8rem">${start}</td>`+
+        `<td style="font-size:.8rem">${end}</td>`+
+        `<td><span class="c-flag ${f.cls}">${f.label}</span></td>`+
+        `<td><button class="bsm bsm-navy" onclick="APP.openContractModal('${id}')">✏ Edit</button></td></tr>`;
+    }).join('');
+  }
+  openContractModal(id){
+    const s=this.staff[id];if(!s)return;
+    $('cm-id').value=id;
+    $('cm-staff-name').textContent=s.name+' ('+id+')';
+    $('cm-start').value=s.contractStart?String(s.contractStart).slice(0,10):'';
+    $('cm-end').value=s.contractEnd?String(s.contractEnd).slice(0,10):'';
+    $('cm-msg').textContent='';
+    $('contract-modal').classList.add('open');
+  }
+  async saveContract(){
+    const id=$('cm-id').value;
+    const start=$('cm-start').value||'';
+    const end=$('cm-end').value||'';
+    const msg=$('cm-msg');
+    if(end&&start&&new Date(end)<new Date(start)){if(msg)msg.innerHTML='<span style="color:var(--red)">End date is before start date.</span>';return;}
+    if(msg)msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API.updateContract(id,start,end);
+    if(r&&r.success){
+      this.staff[id].contractStart=start;
+      this.staff[id].contractEnd=end;
+      this._cacheS();
+      closeModal('contract-modal');
+      // Re-render whichever panel is active
+      this.renderContracts('a-');this.renderContracts('m-');
+      toast('Contract dates saved ✓');
+    } else {
+      if(msg)msg.innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+    }
+  }
+
+  /* ── Daily contract-expiry email digest (admin/HR/CL only) ── */
+  _checkContractReminders(){
+    try{
+      const uid=this.user?.id;
+      if(uid!==COUNTRY_LEADER_ID&&uid!==HR_MANAGER_ID&&this.user?.role!=='admin')return;
+      // Only send once per day per browser
+      const todayKey='thp_contract_remind_'+todayISO();
+      if(localStorage.getItem(todayKey))return;
+      const EXCLUDED=['intern','national service'];
+      const expiring=[];
+      Object.entries(this.staff).forEach(([id,s])=>{
+        const unit=(s.unit||'').toLowerCase(),role=(s.role||'').toLowerCase();
+        if(EXCLUDED.some(x=>unit.includes(x)||role.includes(x)))return;
+        if(!s.contractEnd)return;
+        const f=this._contractFlag(s.contractEnd);
+        // Notify for red (expired or ≤30 days)
+        if(f.cls==='red'&&f.days!==null){
+          expiring.push({name:s.name,id,unit:s.unit||'',endDate:s.contractEnd,daysLeft:f.days});
+        }
+      });
+      if(!expiring.length){localStorage.setItem(todayKey,'1');return;}
+      // Send digest via GAS
+      const recipients=[];
+      const edna=this.staff[HR_MANAGER_ID]?.email;
+      const agatha=this.staff[COUNTRY_LEADER_ID]?.email;
+      if(edna)recipients.push(edna);
+      if(agatha)recipients.push(agatha);
+      API.gasPost({action:'contractReminder',recipients,expiring}).catch(()=>{});
+      localStorage.setItem(todayKey,'1');
+    }catch(e){console.warn('Contract reminder check:',e);}
+  }
+
+  /* ═══════════════════════════════════════════
      COUNTRY LEADER DELEGATION
      Allows CL to delegate leave approval to another manager
   ═══════════════════════════════════════════ */
@@ -2689,6 +2822,7 @@ const APP=new App();
       setTimeout(()=>{
         APP.renderAdmin();APP._renderDash();APP._renderStaffGrid();APP._renderReports();APP.renderAdminLeave();APP._updateNotifBadges();
         APP._populateSupervisorDropdown();APP._initEntQR();APP.renderAdminHolidays();
+        APP._checkContractReminders();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
         hideLoader();
       },100);
@@ -2709,6 +2843,7 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
+        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');APP._checkContractReminders();}
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
