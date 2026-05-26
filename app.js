@@ -2520,7 +2520,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const days=Math.round((end-now)/86400000);
     if(days<0)return{cls:'red',label:'⚠ Expired '+Math.abs(days)+'d ago',days};
     if(days<=30)return{cls:'red',label:'🔴 Expires in '+days+'d',days};
-    if(days<=90)return{cls:'amber',label:'🟠 Expires in '+days+'d',days};
+    if(days<=60)return{cls:'amber',label:'🟠 Expires in '+days+'d',days};
     return{cls:'green',label:'🟢 '+days+'d remaining',days};
   }
   renderContracts(prefix){
@@ -2528,13 +2528,9 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const body=$(p+'contracts-body');if(!body)return;
     const summary=$(p+'contract-summary');
     const q=($(p+'contract-search')?.value||'').trim().toLowerCase();
-    const EXCLUDED=['intern','national service'];
-    // Build contract list — exclude interns & national service
+    // Build contract list — include all staff (interns, NSS, and Country Leader included)
     let list=Object.entries(this.staff).filter(([id,s])=>{
-      const unit=(s.unit||'').toLowerCase();
-      const role=(s.role||'').toLowerCase();
-      if(EXCLUDED.some(x=>unit.includes(x)||role.includes(x)))return false;
-      return true;
+      return (s.role||'')!=='admin';
     });
     if(q)list=list.filter(([id,s])=>id.toLowerCase().includes(q)||(s.name||'').toLowerCase().includes(q));
     // Sort: soonest expiry first, no-date staff last
@@ -2549,7 +2545,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     list.forEach(([id,s])=>{const f=this._contractFlag(s.contractEnd);if(f.cls==='red')red++;else if(f.cls==='amber')amber++;else if(f.cls==='green')green++;else nodate++;});
     if(summary)summary.innerHTML=
       `<div class="cs-box"><div class="cs-num" style="color:#dc2626">${red}</div><div class="cs-lbl">Expiring / Expired</div></div>`+
-      `<div class="cs-box"><div class="cs-num" style="color:#d97706">${amber}</div><div class="cs-lbl">Within 90 Days</div></div>`+
+      `<div class="cs-box"><div class="cs-num" style="color:#d97706">${amber}</div><div class="cs-lbl">Within 60 Days</div></div>`+
       `<div class="cs-box"><div class="cs-num" style="color:#16a34a">${green}</div><div class="cs-lbl">Active</div></div>`+
       `<div class="cs-box"><div class="cs-num" style="color:var(--text3)">${nodate}</div><div class="cs-lbl">No Date Set</div></div>`;
     if(!list.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📭</div>No staff found</div></td></tr>';return;}
@@ -2603,15 +2599,13 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       // Only send once per day per browser
       const todayKey='thp_contract_remind_'+todayISO();
       if(localStorage.getItem(todayKey))return;
-      const EXCLUDED=['intern','national service'];
       const expiring=[];
       Object.entries(this.staff).forEach(([id,s])=>{
-        const unit=(s.unit||'').toLowerCase(),role=(s.role||'').toLowerCase();
-        if(EXCLUDED.some(x=>unit.includes(x)||role.includes(x)))return;
+        if((s.role||'')==='admin')return;
         if(!s.contractEnd)return;
         const f=this._contractFlag(s.contractEnd);
-        // Notify for red (expired or ≤30 days)
-        if(f.cls==='red'&&f.days!==null){
+        // Notify when countdown has started: expired, or within 60 days (red or amber)
+        if((f.cls==='red'||f.cls==='amber')&&f.days!==null){
           expiring.push({name:s.name,id,unit:s.unit||'',endDate:s.contractEnd,daysLeft:f.days});
         }
       });
