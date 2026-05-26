@@ -2591,34 +2591,13 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     }
   }
 
-  /* ── Daily contract-expiry email digest (admin/HR/CL only) ── */
+  /* ── Contract-expiry email is now handled by the GAS scheduled
+     job `checkContractExpiry` (60-day + 30-day + expired notices).
+     The frontend no longer sends emails to avoid duplicates — it
+     only renders the visual Contracts panel. ── */
   _checkContractReminders(){
-    try{
-      const uid=this.user?.id;
-      if(uid!==COUNTRY_LEADER_ID&&uid!==HR_MANAGER_ID&&this.user?.role!=='admin')return;
-      // Only send once per day per browser
-      const todayKey='thp_contract_remind_'+todayISO();
-      if(localStorage.getItem(todayKey))return;
-      const expiring=[];
-      Object.entries(this.staff).forEach(([id,s])=>{
-        if((s.role||'')==='admin')return;
-        if(!s.contractEnd)return;
-        const f=this._contractFlag(s.contractEnd);
-        // Notify when countdown has started: expired, or within 60 days (red or amber)
-        if((f.cls==='red'||f.cls==='amber')&&f.days!==null){
-          expiring.push({name:s.name,id,unit:s.unit||'',endDate:s.contractEnd,daysLeft:f.days});
-        }
-      });
-      if(!expiring.length){localStorage.setItem(todayKey,'1');return;}
-      // Send digest via GAS
-      const recipients=[];
-      const edna=this.staff[HR_MANAGER_ID]?.email;
-      const agatha=this.staff[COUNTRY_LEADER_ID]?.email;
-      if(edna)recipients.push(edna);
-      if(agatha)recipients.push(agatha);
-      API.gasPost({action:'contractReminder',recipients,expiring}).catch(()=>{});
-      localStorage.setItem(todayKey,'1');
-    }catch(e){console.warn('Contract reminder check:',e);}
+    // Intentionally a no-op: GAS time-driven trigger sends the emails.
+    return;
   }
 
   /* ═══════════════════════════════════════════
