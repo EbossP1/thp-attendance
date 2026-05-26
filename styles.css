@@ -281,6 +281,16 @@ body{
 /* Mobile tab badge */
 .mob-tab{position:relative;}
 .cl-only-tab{display:none!important;}
+.contract-tab{display:none!important;}
+.contract-summary{display:flex;gap:.7rem;flex-wrap:wrap;padding:1rem 1.3rem;border-bottom:1px solid var(--border)}
+.contract-summary .cs-box{flex:1;min-width:110px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;text-align:center}
+.contract-summary .cs-num{font-size:1.5rem;font-weight:700;line-height:1}
+.contract-summary .cs-lbl{font-size:.7rem;color:var(--text2);margin-top:3px;text-transform:uppercase;letter-spacing:.3px}
+.c-flag{display:inline-block;padding:2px 9px;border-radius:10px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.c-flag.red{background:rgba(239,68,68,.15);color:#dc2626}
+.c-flag.amber{background:rgba(245,166,35,.15);color:#d97706}
+.c-flag.green{background:rgba(34,197,94,.15);color:#16a34a}
+.c-flag.none{background:var(--surf2);color:var(--text3)}
 .mob-notif{
   display:none;position:absolute;
   top:2px;right:calc(50% - 16px);
