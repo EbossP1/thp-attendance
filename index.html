@@ -340,6 +340,7 @@
       <button class="nav-item" id="nav-mgr-leave" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave()"><span class="ico">🏖</span><span id="nav-mgr-leave-text">Leave Review</span><span class="notif-badge" id="badge-mgr-leave"></span></button>
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
+      <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts</button>
       <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
@@ -515,6 +516,26 @@
           <div class="scr"><table id="m-report-table"><thead><tr id="m-report-hdr"></tr></thead><tbody id="m-report-body"></tbody></table></div>
         </div>
       </div>
+      <!-- Staff Contracts (Edna / Country Leader) -->
+      <div id="m-contracts" class="panel">
+        <div class="pg-hdr"><h2>📄 Staff Contracts</h2><p>Track contract expiry dates and get early reminders before renewal is due</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr">
+            <h4>Contract Status</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
+                <span>🔍</span><input class="fi" type="text" id="m-contract-search" placeholder="Staff ID or Name…" oninput="APP.renderContracts('m-')" style="width:160px">
+              </div>
+              <button class="bsm bsm-teal" onclick="APP.renderContracts('m-')">🔄 Refresh</button>
+            </div>
+          </div>
+          <div id="m-contract-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Contract Start</th><th>Contract End</th><th>Status</th><th style="width:120px">Actions</th></tr></thead><tbody id="m-contracts-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> Interns and National Service personnel are excluded automatically. 🔴 = expired or expiring within 30 days, 🟠 = within 90 days, 🟢 = beyond 90 days. Click "Edit" to set or update a staff member's contract dates.
+        </div>
+      </div>
       <!-- Manager Change Password -->
       <!-- Leave History (Agatha's decision log) -->
       <div id="m-leave-history" class="panel">
@@ -628,6 +649,7 @@
       <button class="nav-item" onclick="showPanel('a-rep','sb-admin',event)"><span class="ico">📈</span>Reports</button>
       <button class="nav-item" onclick="showPanel('a-ent','sb-admin',event)"><span class="ico">🔲</span>Entrance QR</button>
       <button class="nav-item" onclick="showPanel('a-holidays','sb-admin',event)"><span class="ico">📅</span>Holidays</button>
+      <button class="nav-item" onclick="showPanel('a-contracts','sb-admin',event);APP.renderContracts('a-')"><span class="ico">📄</span>Contracts</button>
       <button class="nav-item" onclick="showPanel('a-delegation','sb-admin',event);APP.renderDelegation()"><span class="ico">🔄</span>CL Delegation</button>
       <button class="nav-item" onclick="showPanel('a-sync','sb-admin',event)"><span class="ico">☁️</span>Google Sheets</button>
       <button class="nav-item" onclick="showPanel('a-chpw','sb-admin',event)"><span class="ico">🔑</span>Password</button>
@@ -824,6 +846,26 @@
           <strong>💡 Tips:</strong> Click "Seed Ghana Holidays" to auto-populate all 15 standard holidays for the selected year (incl. Eid estimates &amp; Farmer's Day). Eid dates are <em>estimated</em> — update them when the government announces official dates. You can also add government-declared holiday extensions or custom office closures.
         </div>
       </div>
+      <!-- Staff Contracts (Admin) -->
+      <div id="a-contracts" class="panel">
+        <div class="pg-hdr"><h2>📄 Staff Contracts</h2><p>Track contract expiry dates and get early reminders before renewal is due</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr">
+            <h4>Contract Status</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
+                <span>🔍</span><input class="fi" type="text" id="a-contract-search" placeholder="Staff ID or Name…" oninput="APP.renderContracts('a-')" style="width:160px">
+              </div>
+              <button class="bsm bsm-teal" onclick="APP.renderContracts('a-')">🔄 Refresh</button>
+            </div>
+          </div>
+          <div id="a-contract-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Contract Start</th><th>Contract End</th><th>Status</th><th style="width:120px">Actions</th></tr></thead><tbody id="a-contracts-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> Interns and National Service personnel are excluded automatically. 🔴 = expired or expiring within 30 days, 🟠 = within 90 days, 🟢 = beyond 90 days. Click "Edit" to set or update a staff member's contract dates.
+        </div>
+      </div>
       <!-- Admin Change Password -->
       <div id="a-chpw" class="panel">
         <div class="pg-hdr"><h2>Change Admin Password</h2><p>Update the administrator account password</p></div>
@@ -865,6 +907,21 @@
     <div class="field"><label>Email (for notifications)</label><input type="email" id="em-email" placeholder="staff@thpghana.org"></div>
     <input type="hidden" id="em-id">
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('edit-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveEdit()">Save</button></div>
+  </div>
+</div>
+
+<!-- Contract edit modal -->
+<div class="overlay" id="contract-modal">
+  <div class="modal"><h3>📄 Edit Contract Dates</h3>
+    <div id="cm-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="field"><label>Contract Start Date</label><input type="date" id="cm-start"></div>
+    <div class="field"><label>Contract End Date</label><input type="date" id="cm-end"></div>
+    <input type="hidden" id="cm-id">
+    <div id="cm-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('contract-modal')">Cancel</button>
+      <button class="btn-add" style="margin:0" onclick="APP.saveContract()">💾 Save</button>
+    </div>
   </div>
 </div>
 
