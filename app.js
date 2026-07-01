@@ -685,6 +685,12 @@ function ghBuiltinHolidayISOs(year){
     eids.eidFitr,                  // Eid al-Fitr (estimated)
     eids.eidAdha,                  // Eid al-Adha (estimated)
   ]);
+  // Postponed / cancelled holidays for a specific year — removed from the block list.
+  // Add the ORIGINAL date here; put the new observed date in the Holidays admin panel.
+  const HOLIDAY_EXCEPTIONS=[
+    '2026-07-01',                  // Republic Day 2026 postponed to 2026-07-03
+  ];
+  HOLIDAY_EXCEPTIONS.forEach(d=>holidays.delete(d));
   return holidays;
 }
 
