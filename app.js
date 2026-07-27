@@ -316,6 +316,21 @@ const API={
     if(r!==null){this.showBar('synced','Contract saved ✓');return{success:true};}
     this.showBar('error','Save failed');return{success:false};
   },
+  /* ── HR Staff Files ── */
+  async getHRFile(id){
+    const r=await this._get('hr_staff_files','staff_id=eq.'+encodeURIComponent(id));
+    return (r&&r.length)?r[0]:null;
+  },
+  async getAllHRFiles(){
+    const r=await this._get('hr_staff_files','select=staff_id,phone,dob,next_of_kin,ssnit_number,bank_account');
+    return r||[];
+  },
+  async saveHRFile(id,data){
+    this.showBar('syncing','Saving file…');
+    const r=await this._upsert('hr_staff_files',[{staff_id:id,...data,updated_at:new Date().toISOString()}]);
+    if(r){this.showBar('synced','File saved ✓');return{success:true};}
+    this.showBar('error','Save failed');return{success:false};
+  },
   async deleteStaff(id){
     await this._delete('staff','id=eq.'+encodeURIComponent(id));
     return{success:true};
@@ -1003,7 +1018,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');this._checkContractReminders();}
+        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');const ht=$('nav-mgr-hrfiles');if(ht)ht.classList.remove('hr-tab');this._checkContractReminders();}
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -1612,8 +1627,55 @@ class App{
       const supName=this.staff[l.supervisorId]?.name||l.supervisorId||'—';
       const finName=this.staff[l.finalApproverId]?.name||l.finalApproverId||'—';
       const note=l.finalApproverNote||l.supervisorNote||'—';
-      return`<tr><td>${l.type}</td><td>${fmtISO(l.startDate)}</td><td>${fmtISO(l.endDate)}</td><td>${l.days}</td><td><div style="font-size:.7rem;color:var(--text3)">${supName}</div>${_bdg(l.supervisorStatus,true)}</td><td><div style="font-size:.7rem;color:var(--text3)">${finName}</div>${_bdg(l.finalApproverStatus||l.hrStatus)}</td><td>${_bdg(l.status)}</td><td style="font-size:.74rem;color:var(--text2)">${note}</td></tr>`;
+      const editBtn=l.status==='Pending'?`<br><button class="bsm" style="margin-top:4px;font-size:.68rem;background:var(--surf2);border:1px solid var(--border);color:var(--text2)" onclick="APP.openLeaveEditModal('${l.id}')">✏ Edit dates</button>`:'';
+      return`<tr><td>${l.type}</td><td>${fmtISO(l.startDate)}</td><td>${fmtISO(l.endDate)}</td><td>${l.days}</td><td><div style="font-size:.7rem;color:var(--text3)">${supName}</div>${_bdg(l.supervisorStatus,true)}</td><td><div style="font-size:.7rem;color:var(--text3)">${finName}</div>${_bdg(l.finalApproverStatus||l.hrStatus)}</td><td>${_bdg(l.status)}${editBtn}</td><td style="font-size:.74rem;color:var(--text2)">${note}</td></tr>`;
     }).join('');
+  }
+
+  /* ── Staff: edit dates on a pending leave request ── */
+  openLeaveEditModal(id){
+    const l=this.leave.find(x=>x.id===id&&x.staffId===this.user.id);
+    if(!l)return;
+    if(l.status!=='Pending')return toast('Only pending requests can be edited','err');
+    $('le-id').value=id;
+    $('le-type').textContent=l.type;
+    $('le-start').value=String(l.startDate).slice(0,10);
+    $('le-end').value=String(l.endDate).slice(0,10);
+    this.updateLeaveEditDays();
+    $('le-msg').textContent='';
+    $('leave-edit-modal').classList.add('open');
+  }
+  updateLeaveEditDays(){
+    const s=$('le-start')?.value,e=$('le-end')?.value;
+    const el=$('le-days');if(!el)return;
+    if(s&&e&&e>=s){el.textContent=workingDaysBetween(s,e)+' working day(s)';}
+    else el.textContent='—';
+  }
+  async saveLeaveEdit(){
+    const id=$('le-id').value;
+    const l=this.leave.find(x=>x.id===id);if(!l)return;
+    const s=$('le-start').value,e=$('le-end').value,msg=$('le-msg');
+    if(!s||!e)return msg.innerHTML='<span style="color:var(--red)">Both dates are required.</span>';
+    if(e<s)return msg.innerHTML='<span style="color:var(--red)">End date is before start date.</span>';
+    const days=workingDaysBetween(s,e);
+    if(days<1)return msg.innerHTML='<span style="color:var(--red)">Selected range has no working days.</span>';
+    // Changed dates need fresh review — reset approvals to their initial state
+    const supNA=l.supervisorStatus==='N/A';
+    const upd={start_date:s,end_date:e,days,
+      supervisor_status:supNA?'N/A':'Pending',supervisor_note:'',
+      final_approver_status:supNA?'Pending':'Waiting',final_approver_note:'',
+      overall_status:'Pending',updated_at:new Date().toISOString()};
+    msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._update('leave_requests','id=eq.'+encodeURIComponent(id),upd);
+    if(r===null)return msg.innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+    Object.assign(l,{startDate:s,endDate:e,days,
+      supervisorStatus:upd.supervisor_status,supervisorNote:'',
+      finalApproverStatus:upd.final_approver_status,finalApproverNote:'',
+      status:'Pending',hrStatus:upd.final_approver_status,hrNote:''});
+    this._cacheL();
+    closeModal('leave-edit-modal');
+    this.renderStaffLeave();this._renderLeaveBal();
+    toast('Leave dates updated ✓ — request re-submitted for review');
   }
 
   /* ── Load leave from server ── */
@@ -2514,6 +2576,113 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ═══════════════════════════════════════════
+     HR STAFF FILES (Phase 1)
+     Visible to Admin, Edna (HR), Agatha (CL)
+  ═══════════════════════════════════════════ */
+  async renderHRFiles(prefix){
+    const p=prefix||'a-';
+    const body=$(p+'hrfiles-body');if(!body)return;
+    const q=($(p+'hr-search')?.value||'').trim().toLowerCase();
+    body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
+    const files=await API.getAllHRFiles();
+    const fileMap={};files.forEach(f=>fileMap[f.staff_id]=f);
+    let list=Object.entries(this.staff).filter(([id,s])=>(s.role||'')!=='admin');
+    if(q)list=list.filter(([id,s])=>id.toLowerCase().includes(q)||(s.name||'').toLowerCase().includes(q));
+    list.sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    if(!list.length){body.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-ico">📭</div>No staff found</div></td></tr>';return;}
+    body.innerHTML=list.map(([id,s])=>{
+      const f=fileMap[id];
+      let status;
+      if(!f)status='<span class="c-flag none">No file</span>';
+      else{
+        const core=[f.dob,f.phone,f.next_of_kin,f.ssnit_number,f.bank_account].filter(v=>v&&String(v).trim()).length;
+        status=core>=5?'<span class="c-flag green">✓ Complete</span>':core>=2?'<span class="c-flag amber">◐ Partial ('+core+'/5)</span>':'<span class="c-flag red">◌ Started</span>';
+      }
+      return `<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td>`+
+        `<td style="font-size:.8rem">${s.unit||'—'}</td>`+
+        `<td style="font-size:.8rem">${f?.phone||s.phone||'—'}</td>`+
+        `<td>${status}</td>`+
+        `<td><button class="bsm bsm-navy" onclick="APP.openHRFileModal('${id}')">🗂 Open</button></td></tr>`;
+    }).join('');
+  }
+  async openHRFileModal(id){
+    const s=this.staff[id];if(!s)return;
+    $('hf-id').value=id;
+    $('hf-staff-name').textContent=s.name+' ('+id+') — '+(s.unit||'');
+    $('hf-msg').textContent='Loading…';
+    $('hrfile-modal').classList.add('open');
+    const f=await API.getHRFile(id)||{};
+    $('hf-dob').value=f.dob?String(f.dob).slice(0,10):'';
+    $('hf-phone').value=f.phone||s.phone||'';
+    $('hf-emergency').value=f.emergency_contact||s.emergencyContact||'';
+    $('hf-nok').value=f.next_of_kin||'';
+    $('hf-nok-phone').value=f.next_of_kin_phone||'';
+    $('hf-ssnit').value=f.ssnit_number||'';
+    $('hf-bank').value=f.bank_name||'';
+    $('hf-account').value=f.bank_account||'';
+    $('hf-quals').value=f.qualifications||'';
+    $('hf-notes').value=f.notes||'';
+    let docs=[];try{docs=JSON.parse(f.documents||'[]');}catch(e){}
+    $('hf-docs-json').value=JSON.stringify(docs);
+    this._renderHRDocs(docs);
+    $('hf-msg').textContent='';
+  }
+  _renderHRDocs(docs){
+    $('hf-docs').innerHTML=docs.length
+      ? docs.map((d,i)=>`<span class="hr-doc-chip">📎 <a href="${d.url}" target="_blank">${d.name}</a> <a href="#" onclick="APP.removeHRDoc(${i});return false" style="color:var(--red)">✕</a></span>`).join('')
+      : '<span style="font-size:.76rem;color:var(--text3)">No documents uploaded yet.</span>';
+  }
+  removeHRDoc(i){
+    let docs=[];try{docs=JSON.parse($('hf-docs-json').value||'[]');}catch(e){}
+    docs.splice(i,1);
+    $('hf-docs-json').value=JSON.stringify(docs);
+    this._renderHRDocs(docs);
+    toast('Removed — click Save File to confirm.','info');
+  }
+  async uploadHRDoc(){
+    const fileInput=$('hf-doc-file');const id=$('hf-id').value;
+    if(!fileInput?.files?.length)return toast('Choose a file first','err');
+    const file=fileInput.files[0];
+    if(file.size>5*1024*1024)return toast('File too large (max 5MB)','err');
+    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Uploading…</span>';
+    try{
+      const b64=await this._fileToBase64(file);
+      const r=await API.gasPost({action:'uploadHRDoc',staffId:id,fileName:file.name,fileData:b64,mimeType:file.type});
+      if(r&&r.success&&r.fileUrl){
+        let docs=[];try{docs=JSON.parse($('hf-docs-json').value||'[]');}catch(e){}
+        docs.push({name:file.name,url:r.fileUrl,at:new Date().toISOString().slice(0,10)});
+        $('hf-docs-json').value=JSON.stringify(docs);
+        this._renderHRDocs(docs);
+        fileInput.value='';
+        $('hf-msg').innerHTML='<span style="color:var(--green)">✓ Uploaded — click Save File to confirm.</span>';
+      }else $('hf-msg').innerHTML='<span style="color:var(--red)">Upload failed. Try again.</span>';
+    }catch(e){$('hf-msg').innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+  }
+  async saveHRFile(){
+    const id=$('hf-id').value;if(!id)return;
+    const data={
+      dob:$('hf-dob').value||null,
+      phone:$('hf-phone').value.trim(),
+      emergency_contact:$('hf-emergency').value.trim(),
+      next_of_kin:$('hf-nok').value.trim(),
+      next_of_kin_phone:$('hf-nok-phone').value.trim(),
+      ssnit_number:$('hf-ssnit').value.trim(),
+      bank_name:$('hf-bank').value.trim(),
+      bank_account:$('hf-account').value.trim(),
+      qualifications:$('hf-quals').value.trim(),
+      notes:$('hf-notes').value.trim(),
+      documents:$('hf-docs-json').value||'[]'
+    };
+    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API.saveHRFile(id,data);
+    if(r&&r.success){
+      closeModal('hrfile-modal');
+      this.renderHRFiles('a-');this.renderHRFiles('m-');
+      toast('Staff file saved ✓');
+    }else $('hf-msg').innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+  }
+
+  /* ═══════════════════════════════════════════
      STAFF CONTRACT REMINDERS
      Visible to Admin, Edna (HR), and Agatha (CL)
      Excludes Interns and National Service personnel
@@ -2822,7 +2991,7 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');APP._checkContractReminders();}
+        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');const ht=$('nav-mgr-hrfiles');if(ht)ht.classList.remove('hr-tab');APP._checkContractReminders();}
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
