@@ -341,6 +341,7 @@
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
       <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts</button>
+      <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>HR Files</button>
       <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
@@ -536,6 +537,24 @@
           <strong>💡 Note:</strong> 🔴 = expired or expiring within 30 days, 🟠 = within 60 days, 🟢 = beyond 60 days. Click "Edit" to set or update a staff member's contract dates.
         </div>
       </div>
+      <!-- HR Staff Files (m-) -->
+      <div id="m-hrfiles" class="panel">
+        <div class="pg-hdr"><h2>🗂 HR Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Staff Files</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
+                <span>🔍</span><input class="fi" type="text" id="m-hr-search" placeholder="Staff ID or Name…" oninput="APP.renderHRFiles('m-')" style="width:160px">
+              </div>
+              <button class="bsm bsm-teal" onclick="APP.renderHRFiles('m-')">🔄 Refresh</button>
+            </div>
+          </div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Phone</th><th>File Status</th><th style="width:110px">Actions</th></tr></thead><tbody id="m-hrfiles-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> Visible to HR, Country Leader and Admin only. "Complete" = personal, next-of-kin and statutory details filled. Documents upload to the THP-Ghana HR Documents folder on Google Drive.
+        </div>
+      </div>
       <!-- Manager Change Password -->
       <!-- Leave History (Agatha's decision log) -->
       <div id="m-leave-history" class="panel">
@@ -650,6 +669,7 @@
       <button class="nav-item" onclick="showPanel('a-ent','sb-admin',event)"><span class="ico">🔲</span>Entrance QR</button>
       <button class="nav-item" onclick="showPanel('a-holidays','sb-admin',event)"><span class="ico">📅</span>Holidays</button>
       <button class="nav-item" onclick="showPanel('a-contracts','sb-admin',event);APP.renderContracts('a-')"><span class="ico">📄</span>Contracts</button>
+      <button class="nav-item" onclick="showPanel('a-hrfiles','sb-admin',event);APP.renderHRFiles('a-')"><span class="ico">🗂</span>HR Files</button>
       <button class="nav-item" onclick="showPanel('a-delegation','sb-admin',event);APP.renderDelegation()"><span class="ico">🔄</span>CL Delegation</button>
       <button class="nav-item" onclick="showPanel('a-sync','sb-admin',event)"><span class="ico">☁️</span>Google Sheets</button>
       <button class="nav-item" onclick="showPanel('a-chpw','sb-admin',event)"><span class="ico">🔑</span>Password</button>
@@ -866,6 +886,24 @@
           <strong>💡 Note:</strong> 🔴 = expired or expiring within 30 days, 🟠 = within 60 days, 🟢 = beyond 60 days. Click "Edit" to set or update a staff member's contract dates.
         </div>
       </div>
+      <!-- HR Staff Files (a-) -->
+      <div id="a-hrfiles" class="panel">
+        <div class="pg-hdr"><h2>🗂 HR Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Staff Files</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
+                <span>🔍</span><input class="fi" type="text" id="a-hr-search" placeholder="Staff ID or Name…" oninput="APP.renderHRFiles('a-')" style="width:160px">
+              </div>
+              <button class="bsm bsm-teal" onclick="APP.renderHRFiles('a-')">🔄 Refresh</button>
+            </div>
+          </div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Phone</th><th>File Status</th><th style="width:110px">Actions</th></tr></thead><tbody id="a-hrfiles-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> Visible to HR, Country Leader and Admin only. "Complete" = personal, next-of-kin and statutory details filled. Documents upload to the THP-Ghana HR Documents folder on Google Drive.
+        </div>
+      </div>
       <!-- Admin Change Password -->
       <div id="a-chpw" class="panel">
         <div class="pg-hdr"><h2>Change Admin Password</h2><p>Update the administrator account password</p></div>
@@ -921,6 +959,59 @@
     <div class="modal-foot">
       <button class="btn-cancel" onclick="closeModal('contract-modal')">Cancel</button>
       <button class="btn-add" style="margin:0" onclick="APP.saveContract()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- HR staff file modal -->
+<div class="overlay" id="hrfile-modal">
+  <div class="modal" style="max-width:640px;max-height:88vh;overflow-y:auto"><h3>🗂 Staff File</h3>
+    <div id="hf-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Date of Birth</label><input type="date" id="hf-dob"></div>
+      <div class="field"><label>Phone</label><input type="text" id="hf-phone" placeholder="e.g. 024 XXX XXXX"></div>
+    </div>
+    <div class="field"><label>Emergency Contact (name &amp; phone)</label><input type="text" id="hf-emergency"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Next of Kin</label><input type="text" id="hf-nok"></div>
+      <div class="field"><label>Next of Kin Phone</label><input type="text" id="hf-nok-phone"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>SSNIT Number</label><input type="text" id="hf-ssnit"></div>
+      <div class="field"><label>Bank Name</label><input type="text" id="hf-bank"></div>
+    </div>
+    <div class="field"><label>Bank Account Number</label><input type="text" id="hf-account"></div>
+    <div class="field"><label>Qualifications</label><textarea id="hf-quals" rows="2" placeholder="e.g. BSc Accounting (UG, 2015); ICA Part II"></textarea></div>
+    <div class="field"><label>HR Notes</label><textarea id="hf-notes" rows="2"></textarea></div>
+    <div class="field"><label>Documents</label>
+      <div id="hf-docs" style="margin-bottom:.4rem"></div>
+      <input type="file" id="hf-doc-file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="font-size:.78rem">
+      <button class="bsm bsm-teal" style="margin-top:.3rem" onclick="APP.uploadHRDoc()">📤 Upload Document</button>
+    </div>
+    <input type="hidden" id="hf-id"><input type="hidden" id="hf-docs-json" value="[]">
+    <div id="hf-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('hrfile-modal')">Cancel</button>
+      <button class="btn-add" style="margin:0" onclick="APP.saveHRFile()">💾 Save File</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leave date edit modal (staff, pending requests only) -->
+<div class="overlay" id="leave-edit-modal">
+  <div class="modal"><h3>✏ Edit Leave Dates</h3>
+    <div style="font-weight:600;color:var(--teal);margin-bottom:.8rem">Type: <span id="le-type"></span></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Start Date</label><input type="date" id="le-start" oninput="APP.updateLeaveEditDays()"></div>
+      <div class="field"><label>End Date</label><input type="date" id="le-end" oninput="APP.updateLeaveEditDays()"></div>
+    </div>
+    <div style="font-size:.82rem;color:var(--text2);margin:.3rem 0 .5rem">Working days: <strong id="le-days">—</strong></div>
+    <div style="font-size:.74rem;color:var(--text3);line-height:1.5">Editing dates re-submits the request — your supervisor and final approver will review it again.</div>
+    <input type="hidden" id="le-id">
+    <div id="le-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('leave-edit-modal')">Cancel</button>
+      <button class="btn-add" style="margin:0" onclick="APP.saveLeaveEdit()">💾 Save Dates</button>
     </div>
   </div>
 </div>
