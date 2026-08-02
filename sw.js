@@ -1,20 +1,15 @@
-const CACHE_NAME = 'thp-attendance-v1';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/styles.css'
-];
+// THP-Ghana Attendance — Service Worker
+// ⚠ DEPLOY RULE: bump the version number below on EVERY deploy
+// (v2 → v3 → v4 …). That one change makes all installed apps
+// fetch fresh files and reload themselves automatically.
+const CACHE_NAME = 'thp-attendance-v2';
+const ASSETS = ['/', '/index.html', '/app.js', '/styles.css'];
 
-// Install — cache core assets
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).catch(()=>{}));
   self.skipWaiting();
 });
 
-// Activate — clean old caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
@@ -24,13 +19,14 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Fetch — network first, fallback to cache
+// Network-first with revalidation (bypasses stale HTTP cache), cache fallback for offline
 self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: 'no-cache' })
       .then(response => {
         const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(()=>{});
         return response;
       })
       .catch(() => caches.match(event.request))
