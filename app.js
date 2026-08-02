@@ -1018,7 +1018,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');const ht=$('nav-mgr-hrfiles');if(ht)ht.classList.remove('hr-tab');this._checkContractReminders();}
+        this._applyPrivileges(id);this._checkContractReminders();
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -1031,6 +1031,7 @@ class App{
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(this.user.name);mav.style.background=this.user.color||avColor(this.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=this.user.name;
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
+        (this._applyPrivileges?this:APP)._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
         this._startAutoClockOut();this._checkClockInReminder();
@@ -2583,25 +2584,39 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const p=prefix||'a-';
     const body=$(p+'hrfiles-body');if(!body)return;
     const q=($(p+'hr-search')?.value||'').trim().toLowerCase();
+    const fUnit=$(p+'hr-unit')?.value||'';
+    const fStat=$(p+'hr-status')?.value||'';
     body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
     const files=await API.getAllHRFiles();
     const fileMap={};files.forEach(f=>fileMap[f.staff_id]=f);
     let list=Object.entries(this.staff).filter(([id,s])=>(s.role||'')!=='admin');
+    const us=$(p+'hr-unit');
+    if(us&&us.options.length<=1){
+      [...new Set(list.map(([i,s])=>(s.unit||'').trim()).filter(Boolean))].sort().forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;us.appendChild(o);});
+    }
+    const statOf=([id,s])=>{const f=fileMap[id];if(!f)return'none';const core=[f.dob,f.phone,f.next_of_kin,f.ssnit_number].filter(v=>v&&String(v).trim()).length;return core>=4?'Complete':core>=2?'Partial':'Started';};
+    const sm=$(p+'hr-summary');
+    if(sm){
+      const units=new Set(list.map(([i,s])=>(s.unit||'').trim()).filter(Boolean));
+      const c={Complete:0,Partial:0,Started:0,none:0};list.forEach(e=>c[statOf(e)]++);
+      sm.innerHTML=`<div class="cs-box"><div class="cs-num">${list.length}</div><div class="cs-lbl">Total Staff</div></div>
+        <div class="cs-box"><div class="cs-num">${units.size}</div><div class="cs-lbl">Units</div></div>
+        <div class="cs-box"><div class="cs-num" style="color:#16a34a">${c.Complete}</div><div class="cs-lbl">Complete</div></div>
+        <div class="cs-box"><div class="cs-num" style="color:#d97706">${c.Partial}</div><div class="cs-lbl">Partial</div></div>
+        <div class="cs-box"><div class="cs-num" style="color:var(--text3)">${c.none}</div><div class="cs-lbl">No File</div></div>`;
+    }
     if(q)list=list.filter(([id,s])=>id.toLowerCase().includes(q)||(s.name||'').toLowerCase().includes(q));
+    if(fUnit)list=list.filter(([i,s])=>(s.unit||'').trim()===fUnit);
+    if(fStat)list=list.filter(e=>statOf(e)===fStat);
     list.sort((a,b)=>a[1].name.localeCompare(b[1].name));
     if(!list.length){body.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-ico">📭</div>No staff found</div></td></tr>';return;}
     body.innerHTML=list.map(([id,s])=>{
-      const f=fileMap[id];
-      let status;
-      if(!f)status='<span class="c-flag none">No file</span>';
-      else{
-        const core=[f.dob,f.phone,f.next_of_kin,f.ssnit_number,f.bank_account].filter(v=>v&&String(v).trim()).length;
-        status=core>=5?'<span class="c-flag green">✓ Complete</span>':core>=2?'<span class="c-flag amber">◐ Partial ('+core+'/5)</span>':'<span class="c-flag red">◌ Started</span>';
-      }
+      const f=fileMap[id];const st=statOf([id,s]);
+      const badge=st==='Complete'?'<span class="c-flag green">✓ Complete</span>':st==='Partial'?'<span class="c-flag amber">◐ Partial</span>':st==='Started'?'<span class="c-flag red">◌ Started</span>':'<span class="c-flag none">No file</span>';
       return `<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td>`+
         `<td style="font-size:.8rem">${s.unit||'—'}</td>`+
         `<td style="font-size:.8rem">${f?.phone||s.phone||'—'}</td>`+
-        `<td>${status}</td>`+
+        `<td>${badge}</td>`+
         `<td><button class="bsm bsm-navy" onclick="APP.openHRFileModal('${id}')">🗂 Open</button></td></tr>`;
     }).join('');
   }
@@ -2618,8 +2633,6 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('hf-nok').value=f.next_of_kin||'';
     $('hf-nok-phone').value=f.next_of_kin_phone||'';
     $('hf-ssnit').value=f.ssnit_number||'';
-    $('hf-bank').value=f.bank_name||'';
-    $('hf-account').value=f.bank_account||'';
     $('hf-quals').value=f.qualifications||'';
     $('hf-notes').value=f.notes||'';
     let docs=[];try{docs=JSON.parse(f.documents||'[]');}catch(e){}
@@ -2667,8 +2680,6 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       next_of_kin:$('hf-nok').value.trim(),
       next_of_kin_phone:$('hf-nok-phone').value.trim(),
       ssnit_number:$('hf-ssnit').value.trim(),
-      bank_name:$('hf-bank').value.trim(),
-      bank_account:$('hf-account').value.trim(),
       qualifications:$('hf-quals').value.trim(),
       notes:$('hf-notes').value.trim(),
       documents:$('hf-docs-json').value||'[]'
@@ -2680,6 +2691,342 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       this.renderHRFiles('a-');this.renderHRFiles('m-');
       toast('Staff file saved ✓');
     }else $('hf-msg').innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+  }
+
+  /* ── Privileges (admin-assigned access) ── */
+  _privDefaults(){return{hr:[COUNTRY_LEADER_ID,HR_MANAGER_ID],cases:[HR_MANAGER_ID],payroll:['THPG/05/2025','THPG/01/2026-3']};}
+  async _fetchPriv(){
+    let p={};
+    try{const r=await API._get('settings','key=eq.privileges');if(r&&r.length&&r[0].value)p=JSON.parse(r[0].value);}catch(e){}
+    const d=this._privDefaults();
+    return{hr:p.hr||d.hr,cases:p.cases||d.cases,payroll:p.payroll||d.payroll};
+  }
+  async _applyPrivileges(id){
+    const p=await this._fetchPriv();this._priv=p;
+    if(p.hr.includes(id)){
+      const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');
+      document.querySelectorAll('#sb-mgr .hr-tab').forEach(e=>e.classList.remove('hr-tab'));
+    }
+    if(p.cases.includes(id)){const cs=$('nav-mgr-cases');if(cs)cs.classList.remove('cases-tab');}
+    if(p.payroll.includes(id)){
+      const py=$('nav-mgr-payroll');if(py)py.classList.remove('payroll-tab');
+      const sp=$('nav-st-payroll');if(sp)sp.classList.remove('payroll-tab');
+    }
+  }
+  async renderPrivileges(){
+    const body=$('a-priv-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Loading…</td></tr>';
+    const p=await this._fetchPriv();
+    const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin').sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    body.innerHTML=list.map(([i,s])=>`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${i} · ${s.role}</span></td>
+      <td style="text-align:center"><input type="checkbox" class="pv-hr" value="${i}" ${p.hr.includes(i)?'checked':''}></td>
+      <td style="text-align:center"><input type="checkbox" class="pv-cases" value="${i}" ${p.cases.includes(i)?'checked':''}></td>
+      <td style="text-align:center"><input type="checkbox" class="pv-pay" value="${i}" ${p.payroll.includes(i)?'checked':''}></td></tr>`).join('');
+  }
+  async savePrivileges(){
+    const grab=c=>[...document.querySelectorAll('.'+c+':checked')].map(e=>e.value);
+    const p={hr:grab('pv-hr'),cases:grab('pv-cases'),payroll:grab('pv-pay')};
+    const r=await API._upsert('settings',[{key:'privileges',value:JSON.stringify(p)}]);
+    if(r)toast('Privileges saved ✓ — takes effect at each person\'s next login');
+    else toast('Save failed','err');
+  }
+
+  /* ── Generic branded table print ── */
+  printSection(panelId,title){
+    const tbl=document.querySelector('#'+panelId+' .scr table');
+    if(!tbl)return toast('Nothing to print','err');
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><title>${title} — THP-Ghana</title><style>
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;font-size:11px;padding:10mm}
+      h1{font-size:15px;color:#2D3592;border-bottom:3px solid #2D3592;padding-bottom:8px;margin:0 0 4px}
+      .meta{font-size:9px;color:#64748b;margin-bottom:10px}
+      table{width:100%;border-collapse:collapse;font-size:10px}
+      th{background:#2D3592;color:#fff;padding:6px;text-align:left;font-size:9.5px}
+      td{padding:5px 6px;border:1px solid #e2e8f0;vertical-align:top}
+      tr:nth-child(even) td{background:#f8fafc}
+      table button{display:none}
+      .c-flag{padding:1px 6px;border-radius:8px;font-size:9px;border:1px solid #cbd5e1}
+      .hr-doc-chip{font-size:9px}
+      @media print{.no-print{display:none}}
+    </style></head><body>
+    <h1>The Hunger Project — Ghana · ${title}</h1>
+    <div class="meta">Generated ${new Date().toLocaleString('en-GB')} · by ${this.user.name}</div>
+    ${tbl.outerHTML}
+    <div class="no-print" style="margin-top:14px"><button onclick="window.print()" style="padding:8px 20px;background:#2D3592;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🖨 Print</button>
+    <button onclick="window.close()" style="padding:8px 20px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;margin-left:8px">✕ Close</button></div>
+    </body></html>`);
+    w.document.close();
+  }
+
+  /* ═══════════════════════════════════════════
+     HR PHASE 2 — standalone modules
+  ═══════════════════════════════════════════ */
+  _uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+  _popStaffSel(elId,val){const el=$(elId);if(!el)return;el.innerHTML=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin').sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([i,s])=>`<option value="${i}"${i===val?' selected':''}>${s.name} (${i})</option>`).join('');}
+  _sName(id){return this.staff[id]?.name||id;}
+
+  /* ── Birthdays ── */
+  async renderBirthdays(p){
+    const body=$(p+'bd-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
+    const files=await API._get('hr_staff_files','select=staff_id,dob')||[];
+    const now=new Date();now.setHours(0,0,0,0);
+    const rows=files.filter(f=>f.dob&&this.staff[f.staff_id]&&this.staff[f.staff_id].role!=='admin').map(f=>{
+      const d=new Date(String(f.dob).slice(0,10));
+      let next=new Date(now.getFullYear(),d.getMonth(),d.getDate());
+      if(next<now)next=new Date(now.getFullYear()+1,d.getMonth(),d.getDate());
+      const days=Math.round((next-now)/86400000);
+      return{id:f.staff_id,dob:d,next,days,age:next.getFullYear()-d.getFullYear()};
+    }).sort((a,b)=>a.days-b.days);
+    if(!rows.length){body.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-ico">🎂</div>No dates of birth on file yet</div></td></tr>';return;}
+    body.innerHTML=rows.map(r=>{
+      const s=this.staff[r.id];
+      const when=r.days===0?'<span class="c-flag green">🎉 Today!</span>':r.days<=14?`<span class="c-flag amber">${r.days}d</span>`:`<span class="c-flag none">${r.days}d</span>`;
+      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${r.id}</span></td><td style="font-size:.8rem">${s.unit||'—'}</td><td>${r.dob.getDate()} ${r.dob.toLocaleString('en',{month:'short'})}</td><td>${r.age}</td><td>${when}</td></tr>`;
+    }).join('');
+  }
+
+  /* ── Announcements ── */
+  async renderAnnouncements(p){
+    const list=$(p+'ann-list');if(!list)return;
+    list.innerHTML='<div style="color:var(--text3);font-size:.8rem">Loading…</div>';
+    const rows=await API._get('announcements','order=created_at.desc&limit=50')||[];
+    if(!rows.length){list.innerHTML='<div class="empty"><div class="empty-ico">📣</div>No announcements yet</div>';return;}
+    list.innerHTML=rows.map(a=>`<div class="ann-card"><h5>${a.title}</h5><div style="font-size:.8rem;white-space:pre-wrap">${a.body||''}</div><div class="ann-meta">${a.author||''} · ${String(a.created_at).slice(0,10)} <a href="#" onclick="APP.delAnnouncement('${a.id}','${p}');return false" style="color:var(--red);margin-left:.5rem">✕ delete</a></div></div>`).join('');
+  }
+  async postAnnouncement(p){
+    const t=$(p+'ann-title').value.trim(),b=$(p+'ann-body').value.trim();
+    if(!t)return toast('Title required','err');
+    const r=await API._upsert('announcements',[{id:this._uid('ANN'),title:t,body:b,author:this.user.name,created_at:new Date().toISOString()}]);
+    if(r){$(p+'ann-title').value='';$(p+'ann-body').value='';toast('Announcement posted ✓');this.renderAnnouncements(p);}
+    else toast('Post failed','err');
+  }
+  async delAnnouncement(id,p){
+    await API._delete('announcements','id=eq.'+encodeURIComponent(id));
+    this.renderAnnouncements(p);
+  }
+
+  /* ── File Manager ── */
+  async renderFileMgr(p){
+    const body=$(p+'fm-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="3" style="color:var(--text3)">Loading…</td></tr>';
+    const files=await API._get('hr_staff_files','select=staff_id,documents')||[];
+    const rows=files.filter(f=>{let d=[];try{d=JSON.parse(f.documents||'[]');}catch(e){}return d.length&&this.staff[f.staff_id];})
+      .map(f=>({id:f.staff_id,docs:JSON.parse(f.documents)})).sort((a,b)=>this._sName(a.id).localeCompare(this._sName(b.id)));
+    if(!rows.length){body.innerHTML='<tr><td colspan="3"><div class="empty"><div class="empty-ico">📁</div>No documents uploaded yet — add them via HR Files</div></td></tr>';return;}
+    body.innerHTML=rows.map(r=>{const s=this.staff[r.id];
+      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${r.id}</span></td><td style="font-size:.8rem">${s.unit||'—'}</td><td>${r.docs.map(d=>`<span class="hr-doc-chip">📎 <a href="${d.url}" target="_blank">${d.name}</a></span>`).join('')}</td></tr>`;
+    }).join('');
+  }
+
+  /* ── Performance ── */
+  async renderPerf(p){
+    const body=$(p+'perf-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('performance_reviews','order=review_date.desc.nullslast&limit=300')||[];
+    this._perfRows=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">📊</div>No reviews yet</div></td></tr>';return;}
+    body.innerHTML=rows.map(r=>`<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td>${r.period||'—'}</td><td style="font-size:.78rem">${r.rating||'—'}</td><td style="font-size:.78rem">${r.reviewer||'—'}</td><td style="font-size:.78rem">${r.review_date?String(r.review_date).slice(0,10):'—'}</td><td style="font-size:.74rem;color:var(--text2)">${r.comments||'—'}</td><td><button class="bsm bsm-navy" onclick="APP.openPerfModal('${r.id}')">✏</button></td></tr>`).join('');
+  }
+  openPerfModal(id){
+    const r=id?(this._perfRows||[]).find(x=>x.id===id):null;
+    this._popStaffSel('pf-staff',r?.staff_id);
+    $('pf-id').value=r?.id||'';
+    $('pf-period').value=r?.period||'';
+    $('pf-rating').value=r?.rating||'Meets Expectations';
+    $('pf-date').value=r?.review_date?String(r.review_date).slice(0,10):'';
+    $('pf-goals').value=r?.goals||'';
+    $('pf-comments').value=r?.comments||'';
+    $('pf-msg').textContent='';
+    $('perf-modal').classList.add('open');
+  }
+  async savePerf(){
+    const id=$('pf-id').value||this._uid('PR');
+    const r=await API._upsert('performance_reviews',[{id,staff_id:$('pf-staff').value,period:$('pf-period').value.trim(),rating:$('pf-rating').value,review_date:$('pf-date').value||null,goals:$('pf-goals').value.trim(),comments:$('pf-comments').value.trim(),reviewer:this.user.name}]);
+    if(r){closeModal('perf-modal');toast('Review saved ✓');this.renderPerf('m-');}
+    else $('pf-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+  }
+
+  /* ── Training ── */
+  async renderTraining(p){
+    const body=$(p+'train-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('training_records','order=completed_date.desc.nullslast&limit=300')||[];
+    this._trainRows=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">🎓</div>No training records yet</div></td></tr>';return;}
+    const today=new Date().toISOString().slice(0,10);
+    body.innerHTML=rows.map(r=>{
+      const exp=r.expiry_date?String(r.expiry_date).slice(0,10):'';
+      const expFlag=exp?(exp<today?`<span class="c-flag red">Expired ${exp}</span>`:`<span class="c-flag ${exp<new Date(Date.now()+60*86400000).toISOString().slice(0,10)?'amber':'green'}">${exp}</span>`):'—';
+      return`<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td style="font-size:.8rem">${r.course||'—'}</td><td style="font-size:.78rem">${r.provider||'—'}</td><td style="font-size:.78rem">${r.completed_date?String(r.completed_date).slice(0,10):'—'}</td><td>${expFlag}</td><td>${r.certificate_url?`<a href="${r.certificate_url}" target="_blank" style="color:var(--teal)">📎 View</a>`:'—'}</td><td><button class="bsm bsm-navy" onclick="APP.openTrainModal('${r.id}')">✏</button></td></tr>`;
+    }).join('');
+  }
+  openTrainModal(id){
+    const r=id?(this._trainRows||[]).find(x=>x.id===id):null;
+    this._popStaffSel('tr-staff',r?.staff_id);
+    $('tr-id').value=r?.id||'';
+    $('tr-course').value=r?.course||'';
+    $('tr-provider').value=r?.provider||'';
+    $('tr-completed').value=r?.completed_date?String(r.completed_date).slice(0,10):'';
+    $('tr-expiry').value=r?.expiry_date?String(r.expiry_date).slice(0,10):'';
+    $('tr-cert').value=r?.certificate_url||'';
+    $('tr-notes').value=r?.notes||'';
+    $('tr-msg').textContent='';
+    $('train-modal').classList.add('open');
+  }
+  async saveTrain(){
+    const id=$('tr-id').value||this._uid('TR');
+    if(!$('tr-course').value.trim())return $('tr-msg').innerHTML='<span style="color:var(--red)">Course is required.</span>';
+    const r=await API._upsert('training_records',[{id,staff_id:$('tr-staff').value,course:$('tr-course').value.trim(),provider:$('tr-provider').value.trim(),completed_date:$('tr-completed').value||null,expiry_date:$('tr-expiry').value||null,certificate_url:$('tr-cert').value.trim(),notes:$('tr-notes').value.trim()}]);
+    if(r){closeModal('train-modal');toast('Training saved ✓');this.renderTraining('m-');}
+    else $('tr-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+  }
+
+  /* ── Lifecycle & Cases (HR + Admin only) ── */
+  async renderCases(p){
+    const body=$(p+'case-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('hr_cases','order=opened_date.desc.nullslast&limit=300')||[];
+    this._caseRows=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">⚖</div>No cases recorded</div></td></tr>';return;}
+    body.innerHTML=rows.map(r=>{
+      const st=r.status==='Closed'?'<span class="c-flag green">Closed</span>':r.status==='Under Review'?'<span class="c-flag amber">Under Review</span>':'<span class="c-flag red">Open</span>';
+      return`<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td style="font-size:.8rem">${r.case_type||'—'}</td><td style="font-size:.78rem">${r.opened_date?String(r.opened_date).slice(0,10):'—'}</td><td>${st}</td><td style="font-size:.74rem;color:var(--text2)">${r.summary||'—'}</td><td style="font-size:.74rem;color:var(--text2)">${r.outcome||'—'}</td><td><button class="bsm bsm-navy" onclick="APP.openCaseModal('${r.id}')">✏</button></td></tr>`;
+    }).join('');
+  }
+  openCaseModal(id){
+    const r=id?(this._caseRows||[]).find(x=>x.id===id):null;
+    this._popStaffSel('cs-staff',r?.staff_id);
+    $('cs-id').value=r?.id||'';
+    $('cs-type').value=r?.case_type||'Disciplinary';
+    $('cs-status').value=r?.status||'Open';
+    $('cs-opened').value=r?.opened_date?String(r.opened_date).slice(0,10):new Date().toISOString().slice(0,10);
+    $('cs-closed').value=r?.closed_date?String(r.closed_date).slice(0,10):'';
+    $('cs-summary').value=r?.summary||'';
+    $('cs-outcome').value=r?.outcome||'';
+    $('cs-msg').textContent='';
+    $('case-modal').classList.add('open');
+  }
+  async saveCase(){
+    const id=$('cs-id').value||this._uid('CS');
+    const r=await API._upsert('hr_cases',[{id,staff_id:$('cs-staff').value,case_type:$('cs-type').value,status:$('cs-status').value,opened_date:$('cs-opened').value||null,closed_date:$('cs-closed').value||null,summary:$('cs-summary').value.trim(),outcome:$('cs-outcome').value.trim()}]);
+    if(r){closeModal('case-modal');toast('Case saved ✓');this.renderCases('m-');}
+    else $('cs-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+  }
+
+  /* ── Org Chart ── */
+  renderOrgChart(p){
+    const el=$(p+'org-tree');if(!el)return;
+    const kids=id=>Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&(s.supervisor||'')===id).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    const node=([i,s])=>`<div><span class="org-node"><strong>${s.name}</strong> <span style="color:var(--text3);font-size:.7rem">${s.unit||''}</span></span>${kids(i).length?`<div class="org-lvl">${kids(i).map(node).join('')}</div>`:''}</div>`;
+    const roots=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&!(s.supervisor||'').trim());
+    el.innerHTML=roots.length?roots.map(node).join(''):'<div class="empty"><div class="empty-ico">🌳</div>No staff found</div>';
+  }
+
+  /* ── Payroll (Finance: Ernest + Emmanuel; settings-driven) ── */
+  _payDefaults(){return{ssnitEmployeePct:5.5,ssnitEmployerPct:13,ssnitCeilingMonthly:69000,tier3MaxPct:16.5,
+    bands:[{w:490,r:0},{w:110,r:.05},{w:130,r:.1},{w:3166.67,r:.175},{w:16000,r:.25},{w:30520,r:.3},{w:null,r:.35}]};}
+  _ghs(n){return 'GH₵ '+(Number(n)||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  async _loadPaySettings(){
+    if(this._payS)return this._payS;
+    const r=await API._get('payroll_settings','key=eq.main');
+    let s=this._payDefaults();
+    if(r&&r.length){try{s={...s,...JSON.parse(r[0].value)};}catch(e){}}
+    this._payS=s;return s;
+  }
+  async savePaySettings(p){
+    const s=await this._loadPaySettings();
+    s.ssnitEmployeePct=+($(p+'ps-emp').value)||s.ssnitEmployeePct;
+    s.ssnitEmployerPct=+($(p+'ps-empr').value)||s.ssnitEmployerPct;
+    s.ssnitCeilingMonthly=+($(p+'ps-ceil').value)||s.ssnitCeilingMonthly;
+    s.tier3MaxPct=+($(p+'ps-t3').value)||s.tier3MaxPct;
+    this._payS=s;
+    const r=await API._upsert('payroll_settings',[{key:'main',value:JSON.stringify(s)}]);
+    if(r){toast('Settings saved ✓');this.renderPayroll(p);}else toast('Save failed','err');
+  }
+  _calcPay(ps,S){
+    let allow=[];try{allow=JSON.parse(ps.allowances||'[]');}catch(e){}
+    const taxA=allow.filter(a=>a.tax).reduce((t,a)=>t+(+a.a||0),0);
+    const nonTax=allow.filter(a=>!a.tax).reduce((t,a)=>t+(+a.a||0),0);
+    const basic=+ps.basic||0;
+    const gross=basic+taxA+nonTax;
+    const capped=Math.min(basic,S.ssnitCeilingMonthly);
+    const ssnitEmp=S.ssnitEmployeePct/100*capped;
+    const tier3=Math.min(+ps.tier3_pct||0,S.tier3MaxPct)/100*basic;
+    let taxable=Math.max(0,basic-ssnitEmp-tier3+taxA);
+    let paye=0,rem=taxable;
+    for(const b of S.bands){const chunk=b.w===null?rem:Math.min(rem,b.w);paye+=chunk*b.r;rem-=chunk;if(rem<=0)break;}
+    const net=gross-ssnitEmp-tier3-paye;
+    const emprSSNIT=S.ssnitEmployerPct/100*capped;
+    return{gross,taxA,nonTax,ssnitEmp,tier3,paye,net,cost:gross+emprSSNIT,allowStr:allow.map(a=>`${a.n} ${this._ghs(a.a)}${a.tax?'':' (nt)'}`).join(', ')||'—'};
+  }
+  async renderPayroll(p){
+    const body=$(p+'pay-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="10" style="color:var(--text3)">Loading…</td></tr>';
+    const S=await this._loadPaySettings();
+    $(p+'ps-emp').value=S.ssnitEmployeePct;$(p+'ps-empr').value=S.ssnitEmployerPct;
+    $(p+'ps-ceil').value=S.ssnitCeilingMonthly;$(p+'ps-t3').value=S.tier3MaxPct;
+    if(!$(p+'pay-month').value)$(p+'pay-month').value=new Date().toISOString().slice(0,7);
+    const rows=await API._get('payroll_staff','select=*')||[];
+    this._payRows=rows;const payMap={};rows.forEach(r=>payMap[r.staff_id]=r);
+    const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin').sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    let tot={gross:0,ssnitEmp:0,tier3:0,paye:0,net:0,cost:0};
+    this._payCalc=[];
+    body.innerHTML=list.map(([id,s])=>{
+      const ps=payMap[id];
+      if(!ps||!+ps.basic)return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td colspan="8" style="color:var(--text3);font-size:.78rem">No salary set</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏ Setup</button></td></tr>`;
+      const c=this._calcPay(ps,S);
+      Object.keys(tot).forEach(k=>tot[k]+=c[k]);
+      this._payCalc.push({id,name:s.name,unit:s.unit,...c,basic:+ps.basic});
+      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td>${this._ghs(ps.basic)}</td><td style="font-size:.72rem">${c.allowStr}</td><td>${this._ghs(c.gross)}</td><td>${this._ghs(c.ssnitEmp)}</td><td>${this._ghs(c.tier3)}</td><td>${this._ghs(c.paye)}</td><td><strong>${this._ghs(c.net)}</strong></td><td>${this._ghs(c.cost)}</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏</button></td></tr>`;
+    }).join('');
+    const sm=$(p+'pay-summary');
+    if(sm)sm.innerHTML=`<div class="cs-box"><div class="cs-num" style="font-size:1rem">${this._ghs(tot.gross)}</div><div class="cs-lbl">Gross</div></div>
+      <div class="cs-box"><div class="cs-num" style="font-size:1rem">${this._ghs(tot.paye)}</div><div class="cs-lbl">PAYE</div></div>
+      <div class="cs-box"><div class="cs-num" style="font-size:1rem">${this._ghs(tot.ssnitEmp)}</div><div class="cs-lbl">SSNIT (Emp)</div></div>
+      <div class="cs-box"><div class="cs-num" style="font-size:1rem;color:var(--green)">${this._ghs(tot.net)}</div><div class="cs-lbl">Net Payout</div></div>
+      <div class="cs-box"><div class="cs-num" style="font-size:1rem">${this._ghs(tot.cost)}</div><div class="cs-lbl">Employer Cost</div></div>`;
+  }
+  async openPayModal(id){
+    const s=this.staff[id];if(!s)return;
+    const ps=(this._payRows||[]).find(r=>r.staff_id===id);
+    let allow=[];try{allow=JSON.parse(ps?.allowances||'[]');}catch(e){}
+    $('pm-id').value=id;
+    $('pm-staff-name').textContent=s.name+' ('+id+')';
+    $('pm-basic').value=ps?.basic||'';
+    $('pm-tier3').value=ps?.tier3_pct||0;
+    $('pm-grade').value=ps?.grade||'junior';
+    $('pm-bank').value='';$('pm-account').value='';
+    API.getHRFile(id).then(hf=>{if($('pm-id').value===id){$('pm-bank').value=hf?.bank_name||'';$('pm-account').value=hf?.bank_account||'';}});
+    $('pm-allow').value=allow.map(a=>`${a.n} : ${a.a} : ${a.tax?'t':'n'}`).join('\n');
+    $('pm-msg').textContent='';
+    $('pay-modal').classList.add('open');
+  }
+  async savePayStaff(){
+    const id=$('pm-id').value;
+    const allow=$('pm-allow').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+      const parts=l.split(':').map(x=>x.trim());
+      return{n:parts[0]||'Allowance',a:+parts[1]||0,tax:(parts[2]||'t').toLowerCase()!=='n'};
+    });
+    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,updated_at:new Date().toISOString()}]);
+    if(r){
+      await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:$('pm-account').value.trim()}]);
+      closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
+    }
+    else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+  }
+  async savePayrollRun(p){
+    if(!this._payCalc||!this._payCalc.length)return toast('Nothing calculated yet','err');
+    const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
+    const r=await API._upsert('payroll_runs',[{id:'RUN-'+month,month,data:JSON.stringify(this._payCalc),processed_at:new Date().toISOString()}]);
+    if(r)toast('Payroll run for '+month+' saved ✓');else toast('Save failed','err');
+  }
+  exportPayrollCSV(p){
+    if(!this._payCalc||!this._payCalc.length)return toast('Nothing to export','err');
+    const month=$(p+'pay-month').value||'';
+    let csv='Staff ID,Name,Unit,Basic,Gross,SSNIT Employee,Tier 3,PAYE,Net Pay,Employer Cost\n';
+    this._payCalc.forEach(r=>{csv+=`"${r.id}","${r.name}","${r.unit||''}",${r.basic.toFixed(2)},${r.gross.toFixed(2)},${r.ssnitEmp.toFixed(2)},${r.tier3.toFixed(2)},${r.paye.toFixed(2)},${r.net.toFixed(2)},${r.cost.toFixed(2)}\n`;});
+    this._dl(csv,'THP_Payroll_'+month+'.csv','text/csv');
   }
 
   /* ═══════════════════════════════════════════
@@ -2991,7 +3338,7 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        if(id===COUNTRY_LEADER_ID||id===HR_MANAGER_ID){const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');const ht=$('nav-mgr-hrfiles');if(ht)ht.classList.remove('hr-tab');APP._checkContractReminders();}
+        APP._applyPrivileges(id);APP._checkContractReminders();
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
@@ -3003,6 +3350,7 @@ const APP=new App();
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=APP.user.name;
         APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._initWorkModeListeners();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
+        (this._applyPrivileges?this:APP)._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
         APP._startAutoClockOut();APP._checkClockInReminder();
