@@ -122,6 +122,7 @@
       <button class="nav-item"        onclick="showPanel('p-leave','sb-staff',event);APP._initLeaveForm();APP._markLeaveDecisionsSeen()"><span class="ico">🏖</span>Leave<span class="notif-badge" id="badge-staff-leave"></span></button>
       <button class="nav-item"        onclick="showPanel('p-profile','sb-staff',event);APP._renderProfileForm('')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item"        onclick="showPanel('p-chpw','sb-staff',event)"><span class="ico">🔑</span>Change Password</button>
+      <button class="nav-item payroll-tab" id="nav-st-payroll" onclick="showPanel('st-payroll','sb-staff',event);APP.renderPayroll('st-')"><span class="ico">₵</span>Payroll</button>
       <div class="sb-bottom">
         <div class="sync-pill no-url" id="st-sync-chip" style="display:none">⬤ Local only</div>
         <div class="user-chip">
@@ -287,6 +288,29 @@
         </div>
       </div>
       <!-- Change Password -->
+      <div id="st-payroll" class="panel">
+        <div class="pg-hdr"><h2>₵ Payroll</h2><p>Ghana statutory engine — PAYE, SSNIT Tiers 1/2/3. Figures are settings-driven; confirm current GRA/SSNIT rates before processing.</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Monthly Run</h4>
+          <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+            <input class="fi" type="month" id="st-pay-month" style="width:150px" onchange="APP.renderPayroll('st-')">
+            <button class="bsm bsm-teal" onclick="APP.renderPayroll('st-')">🔄 Recalculate</button>
+            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('st-')">💾 Save Run</button>
+            <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('st-')">📊 CSV</button>
+            <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
+          </div></div>
+          <div id="st-pay-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Tier 3</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="st-pay-body"></tbody></table></div>
+        </div>
+        <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('st-')">💾 Save Settings</button></div></div>
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
+            <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="st-ps-emp" style="width:80px"></label>
+            <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="st-ps-empr" style="width:80px"></label>
+            <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="st-ps-ceil" style="width:110px"></label>
+            <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
+          </div>
+          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
+        </div>
+      </div>
       <div id="p-chpw" class="panel">
         <div class="pg-hdr"><h2>Change Password</h2><p>Update your account password</p></div>
         <div class="add-card" style="max-width:480px">
@@ -341,7 +365,15 @@
       <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
       <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts</button>
-      <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>HR Files</button>
+      <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>Staff Files</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-birthdays','sb-mgr',event);APP.renderBirthdays('m-')"><span class="ico">🎂</span>Birthdays</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="ico">📣</span>Announcements</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="ico">📁</span>File Manager</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-performance','sb-mgr',event);APP.renderPerf('m-')"><span class="ico">📊</span>Performance</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-training','sb-mgr',event);APP.renderTraining('m-')"><span class="ico">🎓</span>Training</button>
+      <button class="nav-item cases-tab" id="nav-mgr-cases" onclick="showPanel('m-cases','sb-mgr',event);APP.renderCases('m-')"><span class="ico">⚖</span>Lifecycle &amp; Cases</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-orgchart','sb-mgr',event);APP.renderOrgChart('m-')"><span class="ico">🌳</span>Org Chart</button>
+      <button class="nav-item payroll-tab" id="nav-mgr-payroll" onclick="showPanel('m-payroll','sb-mgr',event);APP.renderPayroll('m-')"><span class="ico">₵</span>Payroll</button>
       <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
       <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
@@ -539,20 +571,85 @@
       </div>
       <!-- HR Staff Files (m-) -->
       <div id="m-hrfiles" class="panel">
-        <div class="pg-hdr"><h2>🗂 HR Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
+        <div class="pg-hdr"><h2>🗂 Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
         <div class="tcard">
           <div class="tcard-hdr"><h4>Staff Files</h4>
             <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
               <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
                 <span>🔍</span><input class="fi" type="text" id="m-hr-search" placeholder="Staff ID or Name…" oninput="APP.renderHRFiles('m-')" style="width:160px">
+                <select class="fi" id="m-hr-unit" onchange="APP.renderHRFiles('m-')" style="width:150px"><option value="">All Units</option></select>
+                <select class="fi" id="m-hr-status" onchange="APP.renderHRFiles('m-')" style="width:130px"><option value="">All Status</option><option>Complete</option><option>Partial</option><option>Started</option><option value="none">No file</option></select>
               </div>
               <button class="bsm bsm-teal" onclick="APP.renderHRFiles('m-')">🔄 Refresh</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-hrfiles','Staff Files')">🖨 Print</button>
             </div>
           </div>
+          <div id="m-hr-summary" class="contract-summary"></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Phone</th><th>File Status</th><th style="width:110px">Actions</th></tr></thead><tbody id="m-hrfiles-body"></tbody></table></div>
         </div>
         <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
           <strong>💡 Note:</strong> Visible to HR, Country Leader and Admin only. "Complete" = personal, next-of-kin and statutory details filled. Documents upload to the THP-Ghana HR Documents folder on Google Drive.
+        </div>
+      </div>
+      <!-- HR Phase 2 standalone panels -->
+      <div id="m-birthdays" class="panel">
+        <div class="pg-hdr"><h2>🎂 Birthdays</h2><p>From staff file dates of birth — nearest first</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Upcoming</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-birthdays','Staff Birthdays')">🖨 Print</button></div></div><div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Birthday</th><th>Turns</th><th>In</th></tr></thead><tbody id="m-bd-body"></tbody></table></div></div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);margin-top:1rem">💡 Add dates of birth in HR Files for staff missing here.</div>
+      </div>
+      <div id="m-announce" class="panel">
+        <div class="pg-hdr"><h2>📣 Announcements</h2><p>Post office-wide notices</p></div>
+        <div class="tcard" style="padding:1rem 1.3rem">
+          <div class="field"><label>Title</label><input type="text" id="m-ann-title"></div>
+          <div class="field"><label>Message</label><textarea id="m-ann-body" rows="3"></textarea></div>
+          <button class="btn-add" style="margin:0" onclick="APP.postAnnouncement('m-')">📣 Post Announcement</button>
+        </div>
+        <div id="m-ann-list" style="margin-top:1rem"></div>
+      </div>
+      <div id="m-filemgr" class="panel">
+        <div class="pg-hdr"><h2>📁 File Manager</h2><p>All documents uploaded to staff HR files</p></div>
+        <div class="tcard"><div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Documents</th></tr></thead><tbody id="m-fm-body"></tbody></table></div></div>
+      </div>
+      <div id="m-performance" class="panel">
+        <div class="pg-hdr"><h2>📊 Performance</h2><p>Review records per staff member</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Reviews</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-performance','Performance Reviews')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openPerfModal()">＋ New Review</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Rating</th><th>Reviewer</th><th>Date</th><th>Comments</th><th style="width:70px"></th></tr></thead><tbody id="m-perf-body"></tbody></table></div></div>
+      </div>
+      <div id="m-training" class="panel">
+        <div class="pg-hdr"><h2>🎓 Training</h2><p>Courses, certificates and expiry tracking</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Records</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-training','Training Records')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openTrainModal()">＋ New Record</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Course</th><th>Provider</th><th>Completed</th><th>Expiry</th><th>Cert</th><th style="width:70px"></th></tr></thead><tbody id="m-train-body"></tbody></table></div></div>
+      </div>
+      <div id="m-cases" class="panel">
+        <div class="pg-hdr"><h2>⚖ Lifecycle &amp; Cases</h2><p>Confidential — visible to HR and Admin only</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Case Log</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-cases','HR Case Log')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openCaseModal()">＋ New Case</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Type</th><th>Opened</th><th>Status</th><th>Summary</th><th>Outcome</th><th style="width:70px"></th></tr></thead><tbody id="m-case-body"></tbody></table></div></div>
+      </div>
+      <div id="m-orgchart" class="panel">
+        <div class="pg-hdr"><h2>🌳 Org Chart</h2><p>Reporting lines from the staff directory</p></div>
+        <div class="tcard" style="padding:1rem 1.3rem"><div id="m-org-tree"></div></div>
+      </div>
+      <div id="m-payroll" class="panel">
+        <div class="pg-hdr"><h2>₵ Payroll</h2><p>Ghana statutory engine — PAYE, SSNIT Tiers 1/2/3. Figures are settings-driven; confirm current GRA/SSNIT rates before processing.</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Monthly Run</h4>
+          <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+            <input class="fi" type="month" id="m-pay-month" style="width:150px" onchange="APP.renderPayroll('m-')">
+            <button class="bsm bsm-teal" onclick="APP.renderPayroll('m-')">🔄 Recalculate</button>
+            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('m-')">💾 Save Run</button>
+            <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('m-')">📊 CSV</button>
+            <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
+          </div></div>
+          <div id="m-pay-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Tier 3</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="m-pay-body"></tbody></table></div>
+        </div>
+        <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('m-')">💾 Save Settings</button></div></div>
+          <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
+            <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="m-ps-emp" style="width:80px"></label>
+            <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="m-ps-empr" style="width:80px"></label>
+            <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="m-ps-ceil" style="width:110px"></label>
+            <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
+          </div>
+          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
         </div>
       </div>
       <!-- Manager Change Password -->
@@ -669,7 +766,8 @@
       <button class="nav-item" onclick="showPanel('a-ent','sb-admin',event)"><span class="ico">🔲</span>Entrance QR</button>
       <button class="nav-item" onclick="showPanel('a-holidays','sb-admin',event)"><span class="ico">📅</span>Holidays</button>
       <button class="nav-item" onclick="showPanel('a-contracts','sb-admin',event);APP.renderContracts('a-')"><span class="ico">📄</span>Contracts</button>
-      <button class="nav-item" onclick="showPanel('a-hrfiles','sb-admin',event);APP.renderHRFiles('a-')"><span class="ico">🗂</span>HR Files</button>
+      <button class="nav-item" onclick="showPanel('a-hrfiles','sb-admin',event);APP.renderHRFiles('a-')"><span class="ico">🗂</span>Staff Files</button>
+      <button class="nav-item" onclick="showPanel('a-priv','sb-admin',event);APP.renderPrivileges()"><span class="ico">🔑</span>Privileges</button>
       <button class="nav-item" onclick="showPanel('a-delegation','sb-admin',event);APP.renderDelegation()"><span class="ico">🔄</span>CL Delegation</button>
       <button class="nav-item" onclick="showPanel('a-sync','sb-admin',event)"><span class="ico">☁️</span>Google Sheets</button>
       <button class="nav-item" onclick="showPanel('a-chpw','sb-admin',event)"><span class="ico">🔑</span>Password</button>
@@ -888,20 +986,34 @@
       </div>
       <!-- HR Staff Files (a-) -->
       <div id="a-hrfiles" class="panel">
-        <div class="pg-hdr"><h2>🗂 HR Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
+        <div class="pg-hdr"><h2>🗂 Staff Files</h2><p>Personnel records — contact, next of kin, statutory details &amp; documents</p></div>
         <div class="tcard">
           <div class="tcard-hdr"><h4>Staff Files</h4>
             <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
               <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
                 <span>🔍</span><input class="fi" type="text" id="a-hr-search" placeholder="Staff ID or Name…" oninput="APP.renderHRFiles('a-')" style="width:160px">
+                <select class="fi" id="a-hr-unit" onchange="APP.renderHRFiles('a-')" style="width:150px"><option value="">All Units</option></select>
+                <select class="fi" id="a-hr-status" onchange="APP.renderHRFiles('a-')" style="width:130px"><option value="">All Status</option><option>Complete</option><option>Partial</option><option>Started</option><option value="none">No file</option></select>
               </div>
               <button class="bsm bsm-teal" onclick="APP.renderHRFiles('a-')">🔄 Refresh</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('a-hrfiles','Staff Files')">🖨 Print</button>
             </div>
           </div>
+          <div id="a-hr-summary" class="contract-summary"></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Phone</th><th>File Status</th><th style="width:110px">Actions</th></tr></thead><tbody id="a-hrfiles-body"></tbody></table></div>
         </div>
         <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
           <strong>💡 Note:</strong> Visible to HR, Country Leader and Admin only. "Complete" = personal, next-of-kin and statutory details filled. Documents upload to the THP-Ghana HR Documents folder on Google Drive.
+        </div>
+      </div>
+      <!-- Privileges (Admin) -->
+      <div id="a-priv" class="panel">
+        <div class="pg-hdr"><h2>🔑 Privileges</h2><p>Assign who can see the HR suite, Cases, and Payroll</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Access Matrix</h4><div class="t-btns"><button class="btn-add" style="margin:0" onclick="APP.savePrivileges()">💾 Save Privileges</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>HR Suite</th><th>Cases</th><th>Payroll</th></tr></thead><tbody id="a-priv-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> HR Suite &amp; Cases appear on manager dashboards; Payroll works for both manager and staff accounts. Changes take effect at the person's next login. If nothing is saved here, defaults apply (HR: Edna &amp; Agatha · Cases: Edna · Payroll: Ernest &amp; Emmanuel).
         </div>
       </div>
       <!-- Admin Change Password -->
@@ -976,11 +1088,7 @@
       <div class="field"><label>Next of Kin</label><input type="text" id="hf-nok"></div>
       <div class="field"><label>Next of Kin Phone</label><input type="text" id="hf-nok-phone"></div>
     </div>
-    <div class="form-row" style="gap:.5rem">
-      <div class="field"><label>SSNIT Number</label><input type="text" id="hf-ssnit"></div>
-      <div class="field"><label>Bank Name</label><input type="text" id="hf-bank"></div>
-    </div>
-    <div class="field"><label>Bank Account Number</label><input type="text" id="hf-account"></div>
+    <div class="field"><label>SSNIT Number</label><input type="text" id="hf-ssnit"></div>
     <div class="field"><label>Qualifications</label><textarea id="hf-quals" rows="2" placeholder="e.g. BSc Accounting (UG, 2015); ICA Part II"></textarea></div>
     <div class="field"><label>HR Notes</label><textarea id="hf-notes" rows="2"></textarea></div>
     <div class="field"><label>Documents</label>
@@ -994,6 +1102,79 @@
       <button class="btn-cancel" onclick="closeModal('hrfile-modal')">Cancel</button>
       <button class="btn-add" style="margin:0" onclick="APP.saveHRFile()">💾 Save File</button>
     </div>
+  </div>
+</div>
+
+<!-- Performance review modal -->
+<div class="overlay" id="perf-modal">
+  <div class="modal"><h3>📊 Performance Review</h3>
+    <div class="field"><label>Staff</label><select id="pf-staff" class="fi"></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Period</label><input type="text" id="pf-period" placeholder="e.g. 2026 Mid-Year"></div>
+      <div class="field"><label>Rating</label><select id="pf-rating" class="fi"><option>Outstanding</option><option>Exceeds Expectations</option><option selected>Meets Expectations</option><option>Needs Improvement</option><option>Unsatisfactory</option></select></div>
+    </div>
+    <div class="field"><label>Review Date</label><input type="date" id="pf-date"></div>
+    <div class="field"><label>Goals</label><textarea id="pf-goals" rows="2"></textarea></div>
+    <div class="field"><label>Comments</label><textarea id="pf-comments" rows="2"></textarea></div>
+    <input type="hidden" id="pf-id"><div id="pf-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('perf-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePerf()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Training record modal -->
+<div class="overlay" id="train-modal">
+  <div class="modal"><h3>🎓 Training Record</h3>
+    <div class="field"><label>Staff</label><select id="tr-staff" class="fi"></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Course</label><input type="text" id="tr-course"></div>
+      <div class="field"><label>Provider</label><input type="text" id="tr-provider"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Completed</label><input type="date" id="tr-completed"></div>
+      <div class="field"><label>Expiry (optional)</label><input type="date" id="tr-expiry"></div>
+    </div>
+    <div class="field"><label>Certificate URL (optional)</label><input type="text" id="tr-cert" placeholder="Drive link"></div>
+    <div class="field"><label>Notes</label><textarea id="tr-notes" rows="2"></textarea></div>
+    <input type="hidden" id="tr-id"><div id="tr-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('train-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveTrain()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- HR case modal -->
+<div class="overlay" id="case-modal">
+  <div class="modal"><h3>⚖ HR Case</h3>
+    <div class="field"><label>Staff</label><select id="cs-staff" class="fi"></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Type</label><select id="cs-type" class="fi"><option>Disciplinary</option><option>Grievance</option><option>Warning</option><option>Commendation</option><option>Other</option></select></div>
+      <div class="field"><label>Status</label><select id="cs-status" class="fi"><option>Open</option><option>Under Review</option><option>Closed</option></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Opened</label><input type="date" id="cs-opened"></div>
+      <div class="field"><label>Closed (optional)</label><input type="date" id="cs-closed"></div>
+    </div>
+    <div class="field"><label>Summary</label><textarea id="cs-summary" rows="2"></textarea></div>
+    <div class="field"><label>Outcome</label><textarea id="cs-outcome" rows="2"></textarea></div>
+    <input type="hidden" id="cs-id"><div id="cs-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('case-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveCase()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Payroll staff setup modal -->
+<div class="overlay" id="pay-modal">
+  <div class="modal"><h3>₵ Pay Setup</h3>
+    <div id="pm-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Basic Salary (GH₵/month)</label><input type="number" step="0.01" id="pm-basic"></div>
+      <div class="field"><label>Tier 3 Contribution %</label><input type="number" step="0.1" id="pm-tier3"></div>
+    </div>
+    <div class="field"><label>Grade</label><select id="pm-grade" class="fi"><option value="junior">Junior</option><option value="senior">Senior</option></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Bank Name</label><input type="text" id="pm-bank"></div>
+      <div class="field"><label>Bank Account</label><input type="text" id="pm-account"></div>
+    </div>
+    <div class="field"><label>Allowances — one per line: Name : Amount : t (taxable) or n</label><textarea id="pm-allow" rows="3" placeholder="Transport : 400 : t&#10;Data bundle : 150 : n"></textarea></div>
+    <input type="hidden" id="pm-id"><div id="pm-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('pay-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePayStaff()">💾 Save</button></div>
   </div>
 </div>
 
@@ -1035,9 +1216,20 @@
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js').then(r=>{
-      console.log('SW registered:',r.scope);
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      console.log('SW registered:',reg.scope);
+      // Re-check for a new version hourly and whenever the app regains focus
+      setInterval(()=>reg.update().catch(()=>{}),60*60*1000);
+      document.addEventListener('visibilitychange',()=>{
+        if(document.visibilityState==='visible')reg.update().catch(()=>{});
+      });
     }).catch(e=>console.log('SW registration failed:',e));
+  });
+  // When a new service worker takes over, reload once so everyone runs the latest files
+  let _swRefreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(_swRefreshing)return;_swRefreshing=true;
+    window.location.reload();
   });
 }
 </script>
