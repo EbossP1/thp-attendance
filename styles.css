@@ -666,3 +666,10 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 .bal-trk{height:6px;background:var(--surf2);border-radius:3px;overflow:hidden;}
 .bal-fill{height:100%;border-radius:3px;transition:width .8s ease;}
 .bal-num{font-size:.72rem;color:var(--text2);white-space:nowrap;}
+.cases-tab{display:none!important;}
+.payroll-tab{display:none!important;}
+.ann-card{background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:.7rem 1rem;margin-bottom:.6rem}
+.ann-card h5{margin:0 0 .2rem;font-size:.88rem}
+.ann-card .ann-meta{font-size:.68rem;color:var(--text3)}
+.org-node{display:inline-block;background:var(--surf2);border:1px solid var(--border);border-radius:8px;padding:.35rem .7rem;margin:.2rem;font-size:.78rem}
+.org-lvl{margin-left:1.4rem;border-left:2px solid var(--border);padding-left:.8rem}
