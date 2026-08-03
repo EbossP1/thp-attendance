@@ -490,10 +490,6 @@
       <div id="m-dash" class="panel active">
         <div class="pg-hdr"><h2>Team Dashboard</h2><p id="mgr-date"></p></div>
         <div class="stats" id="mgr-stats"></div>
-        <div class="tcard">
-          <div class="tcard-hdr"><h4>Team Attendance Today</h4></div>
-          <div class="scr"><table><thead><tr><th>Name</th><th>Unit</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody id="mgr-today"></tbody></table></div>
-        </div>
         <div id="m-hd-wrap" class="hr-tab">
           <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>📈 HR Analytics</h4><div class="t-btns"><button class="bsm bsm-teal" onclick="APP.renderHRDash('m-')">🔄 Refresh</button></div></div>
             <div id="m-hd-strip1" class="contract-summary"></div>
@@ -504,6 +500,10 @@
             <div class="tcard" style="flex:1;min-width:280px"><div class="tcard-hdr"><h4>Department Ratio</h4></div><div id="m-hd-units" style="padding:1rem 1.3rem"></div></div>
             <div class="tcard" style="flex:1;min-width:280px"><div class="tcard-hdr"><h4>Employment Status</h4></div><div id="m-hd-emp" style="padding:1rem 1.3rem"></div></div>
           </div>
+        </div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>📋 Today's Attendance</h4></div>
+          <div class="scr"><table><thead><tr><th>Name</th><th>Unit</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead><tbody id="mgr-today"></tbody></table></div>
         </div>
       </div>
       <div id="m-recs" class="panel">
@@ -555,6 +555,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
                 <span>🔍</span><input class="fi" type="text" id="mgr-rep-staff" placeholder="Staff ID or Name…" oninput="APP.renderMgrReport()" style="width:160px">
+                <select class="fi" id="mgr-rep-mode" onchange="APP.renderMgrReport()" style="width:150px" title="Attendance summary view"><option value="daily">Daily Register</option><option value="summary">Days Summary</option></select>
                 <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="$('mgr-rep-staff').value='';APP.renderMgrReport()">✕</button>
               </div>
               <button class="bsm bsm-navy" onclick="APP.exportMgrReport()">📊 CSV</button>
