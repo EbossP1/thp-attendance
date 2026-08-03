@@ -2635,6 +2635,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('hf-ssnit').value=f.ssnit_number||'';
     $('hf-quals').value=f.qualifications||'';
     $('hf-notes').value=f.notes||'';
+    $('hf-photo-url').value=f.photo_url||'';
+    const _pv=$('hf-photo-prev');if(_pv){const _t=this._drivePhoto(f.photo_url);if(_t){_pv.src=_t;_pv.style.display='block';}else _pv.style.display='none';}
     let docs=[];try{docs=JSON.parse(f.documents||'[]');}catch(e){}
     $('hf-docs-json').value=JSON.stringify(docs);
     this._renderHRDocs(docs);
@@ -2682,6 +2684,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       ssnit_number:$('hf-ssnit').value.trim(),
       qualifications:$('hf-quals').value.trim(),
       notes:$('hf-notes').value.trim(),
+      photo_url:$('hf-photo-url').value||'',
       documents:$('hf-docs-json').value||'[]'
     };
     $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
@@ -2764,6 +2767,82 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   _uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
   _popStaffSel(elId,val){const el=$(elId);if(!el)return;el.innerHTML=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin').sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([i,s])=>`<option value="${i}"${i===val?' selected':''}>${s.name} (${i})</option>`).join('');}
   _sName(id){return this.staff[id]?.name||id;}
+
+  /* ── HR Dashboard analytics ── */
+  _drivePhoto(url){if(!url)return'';const m=String(url).match(/[-\w]{25,}/);return m?'https://drive.google.com/thumbnail?id='+m[0]+'&sz=w200':'';}
+  _empType(u){u=(u||'').toLowerCase();return u.includes('national service')?'National Service':u.includes('intern')?'Intern':'Full Staff';}
+  async renderHRDash(p){
+    const s1=$(p+'hd-strip1');if(!s1)return;
+    s1.innerHTML='<div style="color:var(--text3);font-size:.8rem;padding:.4rem">Loading…</div>';
+    const files=await API._get('hr_staff_files','select=staff_id,dob,photo_url')||[];
+    const fm={};files.forEach(f=>fm[f.staff_id]=f);
+    const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin');
+    const now=new Date();now.setHours(0,0,0,0);
+    const box=(n,l,c)=>`<div class="cs-box"><div class="cs-num"${c?` style="color:${c}"`:''}>${n}</div><div class="cs-lbl">${l}</div></div>`;
+    // Headcount
+    const male=list.filter(([i,s])=>(s.gender||'male')==='male').length;
+    const female=list.filter(([i,s])=>s.gender==='female').length;
+    const d90=new Date(now-90*86400000);
+    const newest=list.filter(([i,s])=>s.contractStart&&new Date(s.contractStart)>=d90).length;
+    const ended=list.filter(([i,s])=>s.contractEnd&&new Date(s.contractEnd)<now).length;
+    s1.innerHTML=box(list.length,'Total Staff')+box(male,'Male','#3b82f6')+box(female,'Female','#ec4899')+box(newest,'New (90 days)','#16a34a')+box(ended,'Contract Ended','#dc2626');
+    // Ages + tenure
+    const ages=list.map(([i])=>fm[i]?.dob).filter(Boolean).map(d=>Math.floor((now-new Date(String(d).slice(0,10)))/(365.25*86400000))).filter(a=>a>0&&a<100);
+    const tenures=list.map(([i,s])=>s.contractStart).filter(Boolean).map(d=>(now-new Date(d))/(365.25*86400000)).filter(t=>t>=0);
+    const s2=$(p+'hd-strip2');
+    if(s2)s2.innerHTML=ages.length
+      ? box(Math.min(...ages),'Youngest')+box(Math.max(...ages),'Oldest')+box((ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1),'Average Age')+box(ages.length+'/'+list.length,'DOBs on File')+box(tenures.length?(tenures.reduce((a,b)=>a+b,0)/tenures.length).toFixed(1)+' yrs':'—','Avg Tenure')
+      : '<div style="color:var(--text3);font-size:.78rem;padding:.4rem">Add dates of birth in Staff Files to see age analytics.</div>';
+    // Birthdays this month
+    const bd=$(p+'hd-bdays');
+    if(bd){
+      const month=now.getMonth();
+      const cel=list.map(([i,s])=>({i,s,f:fm[i]})).filter(x=>x.f?.dob&&new Date(String(x.f.dob).slice(0,10)).getMonth()===month)
+        .map(x=>{const d=new Date(String(x.f.dob).slice(0,10));return{...x,d,day:d.getDate(),today:d.getDate()===now.getDate(),turns:now.getFullYear()-d.getFullYear()};})
+        .sort((a,b)=>a.day-b.day);
+      bd.innerHTML=cel.length?cel.map(x=>{
+        const ph=this._drivePhoto(x.f.photo_url);
+        const av=ph?`<img src="${ph}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid ${x.today?'var(--gold,#F5A623)':'var(--border)'}">`
+          :`<div style="width:56px;height:56px;border-radius:50%;background:${x.s.color||'#2D3592'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.2rem;border:2px solid ${x.today?'var(--gold,#F5A623)':'transparent'}">${(x.s.name||'?')[0]}</div>`;
+        return`<div style="text-align:center;width:110px">${av.replace('style="','style="margin:0 auto;display:block;')}
+          <div style="font-size:.76rem;font-weight:600;margin-top:.3rem">${x.s.name.split(' ')[0]} ${x.today?'🎉':''}</div>
+          <div style="font-size:.68rem;color:var(--text3)">${x.day} ${x.d.toLocaleString('en',{month:'short'})} · turns ${x.turns}</div></div>`;
+      }).join(''):'<div style="color:var(--text3);font-size:.78rem">No birthdays this month (or no DOBs on file).</div>';
+    }
+    // Ratios
+    const bar=(label,n,total,color)=>{const pct=total?Math.round(n/total*100):0;return`<div style="margin-bottom:.55rem"><div style="display:flex;justify-content:space-between;font-size:.76rem;margin-bottom:2px"><span>${label}</span><span style="color:var(--text3)">${n} · ${pct}%</span></div><div style="height:8px;background:var(--surf2);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div></div>`;};
+    const uEl=$(p+'hd-units');
+    if(uEl){
+      const uc={};list.forEach(([i,s])=>{const u=(s.unit||'Unassigned').trim()||'Unassigned';uc[u]=(uc[u]||0)+1;});
+      const cols=['#2D3592','#3DBFB8','#F5A623','#22c55e','#ef4444','#a855f7','#06b6d4','#ec4899','#f97316','#818cf8'];
+      uEl.innerHTML=Object.entries(uc).sort((a,b)=>b[1]-a[1]).map(([u,n],i)=>bar(u,n,list.length,cols[i%cols.length])).join('');
+    }
+    const eEl=$(p+'hd-emp');
+    if(eEl){
+      const ec={};list.forEach(([i,s])=>{const t=this._empType(s.unit);ec[t]=(ec[t]||0)+1;});
+      const ecol={'Full Staff':'#22c55e','Intern':'#F5A623','National Service':'#3DBFB8'};
+      eEl.innerHTML=Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([t,n])=>bar(t,n,list.length,ecol[t]||'#818cf8')).join('')
+        +`<div style="font-size:.7rem;color:var(--text3);margin-top:.5rem">Gender ratio: ${male} M : ${female} F</div>`;
+    }
+  }
+  async uploadHRPhoto(){
+    const inp=$('hf-photo-file');const id=$('hf-id').value;
+    if(!inp?.files?.length)return toast('Choose an image first','err');
+    const file=inp.files[0];
+    if(!file.type.startsWith('image/'))return toast('Images only','err');
+    if(file.size>2*1024*1024)return toast('Image too large (max 2MB)','err');
+    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Uploading photo…</span>';
+    try{
+      const b64=await this._fileToBase64(file);
+      const r=await API.gasPost({action:'uploadHRDoc',staffId:id,fileName:'photo_'+file.name,fileData:b64,mimeType:file.type});
+      if(r&&r.success&&r.fileUrl){
+        $('hf-photo-url').value=r.fileUrl;
+        const pv=$('hf-photo-prev');pv.src=this._drivePhoto(r.fileUrl);pv.style.display='block';
+        inp.value='';
+        $('hf-msg').innerHTML='<span style="color:var(--green)">✓ Photo uploaded — click Save File to confirm.</span>';
+      }else $('hf-msg').innerHTML='<span style="color:var(--red)">Upload failed.</span>';
+    }catch(e){$('hf-msg').innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+  }
 
   /* ── Birthdays ── */
   async renderBirthdays(p){
