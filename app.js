@@ -2070,6 +2070,8 @@ class App{
     const nameEl=$(p+'prof-name');if(nameEl)nameEl.textContent=s.name;
     const unitEl=$(p+'prof-unit');if(unitEl)unitEl.textContent=s.unit;
     const roleEl=$(p+'prof-role');if(roleEl)roleEl.textContent=roleLabel(s.role);
+    const dobEl=$(p+'prof-dob');
+    if(dobEl){dobEl.value='';API.getHRFile(uid).then(f=>{if(f?.dob)dobEl.value=String(f.dob).slice(0,10);});}
   }
 
   async saveProfile(prefix){
@@ -2081,7 +2083,9 @@ class App{
     const msgEl=$(p+'prof-msg');if(msgEl)msgEl.textContent='';
 
     if(msgEl)msgEl.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const dob=$(p+'prof-dob')?.value||'';
     const r=await API.updateProfile(uid,{email,phone,emergencyContact});
+    if(dob)API._upsert('hr_staff_files',[{staff_id:uid,dob,phone}]).catch(()=>{});
     if(r&&r.success){
       // Update local cache
       this.staff[uid].email=email;
@@ -2708,7 +2712,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const p=await this._fetchPriv();this._priv=p;
     if(p.hr.includes(id)){
       const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');
-      document.querySelectorAll('#sb-mgr .hr-tab').forEach(e=>e.classList.remove('hr-tab'));
+      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));this.renderHRDash('m-');
     }
     if(p.cases.includes(id)){const cs=$('nav-mgr-cases');if(cs)cs.classList.remove('cases-tab');}
     if(p.payroll.includes(id)){
@@ -2885,17 +2889,53 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     this.renderAnnouncements(p);
   }
 
-  /* ── File Manager ── */
+  /* ── File Manager — organizational document library ── */
   async renderFileMgr(p){
-    const body=$(p+'fm-body');if(!body)return;
-    body.innerHTML='<tr><td colspan="3" style="color:var(--text3)">Loading…</td></tr>';
-    const files=await API._get('hr_staff_files','select=staff_id,documents')||[];
-    const rows=files.filter(f=>{let d=[];try{d=JSON.parse(f.documents||'[]');}catch(e){}return d.length&&this.staff[f.staff_id];})
-      .map(f=>({id:f.staff_id,docs:JSON.parse(f.documents)})).sort((a,b)=>this._sName(a.id).localeCompare(this._sName(b.id)));
-    if(!rows.length){body.innerHTML='<tr><td colspan="3"><div class="empty"><div class="empty-ico">📁</div>No documents uploaded yet — add them via HR Files</div></td></tr>';return;}
-    body.innerHTML=rows.map(r=>{const s=this.staff[r.id];
-      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${r.id}</span></td><td style="font-size:.8rem">${s.unit||'—'}</td><td>${r.docs.map(d=>`<span class="hr-doc-chip">📎 <a href="${d.url}" target="_blank">${d.name}</a></span>`).join('')}</td></tr>`;
-    }).join('');
+    const body=$('m-fm-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('org_documents','order=created_at.desc&limit=300')||[];
+    this._orgDocs=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-ico">📁</div>No documents in the library yet — upload above</div></td></tr>';return;}
+    body.innerHTML=rows.map(d=>`<tr><td><a href="${d.url}" target="_blank" style="color:var(--teal);font-weight:600">📎 ${d.name}</a></td>
+      <td style="font-size:.8rem">${d.category||'General'}</td>
+      <td><select class="fi" style="width:110px;font-size:.74rem" onchange="APP.setOrgDocVis('${d.id}',this.value)">
+        <option value="staff" ${d.visibility==='staff'?'selected':''}>All Staff</option>
+        <option value="hr" ${d.visibility==='hr'?'selected':''}>HR Only</option></select></td>
+      <td style="font-size:.76rem">${String(d.created_at).slice(0,10)}<br><span style="color:var(--text3);font-size:.68rem">${d.uploaded_by||''}</span></td>
+      <td><button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.delOrgDoc('${d.id}')">🗑 Delete</button></td></tr>`).join('');
+  }
+  async uploadOrgDoc(){
+    const inp=$('m-od-file');const msg=$('m-od-msg');
+    if(!inp?.files?.length)return toast('Choose a file first','err');
+    const file=inp.files[0];
+    if(file.size>5*1024*1024)return toast('File too large (max 5MB)','err');
+    msg.innerHTML='<span style="color:var(--teal)">⏳ Uploading…</span>';
+    try{
+      const b64=await this._fileToBase64(file);
+      const r=await API.gasPost({action:'uploadHRDoc',staffId:'ORG',fileName:file.name,fileData:b64,mimeType:file.type});
+      if(r&&r.success&&r.fileUrl){
+        await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
+        inp.value='';
+        msg.innerHTML='<span style="color:var(--green)">✓ Uploaded to library.</span>';
+        this.renderFileMgr('m-');
+      }else msg.innerHTML='<span style="color:var(--red)">Upload failed.</span>';
+    }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+  }
+  async setOrgDocVis(id,vis){
+    await API._update('org_documents','id=eq.'+encodeURIComponent(id),{visibility:vis});
+    toast(vis==='staff'?'Now visible to all staff':'Now HR only');
+  }
+  async delOrgDoc(id){
+    if(!confirm('Delete this document from the library?'))return;
+    await API._delete('org_documents','id=eq.'+encodeURIComponent(id));
+    this.renderFileMgr('m-');
+  }
+  async renderStaffDocs(){
+    const body=$('st-docs-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('org_documents','visibility=eq.staff&order=created_at.desc&limit=300')||[];
+    if(!rows.length){body.innerHTML='<tr><td colspan="4"><div class="empty"><div class="empty-ico">📁</div>No documents shared yet</div></td></tr>';return;}
+    body.innerHTML=rows.map(d=>`<tr><td style="font-weight:600">📎 ${d.name}</td><td style="font-size:.8rem">${d.category||'General'}</td><td style="font-size:.78rem">${String(d.created_at).slice(0,10)}</td><td><a href="${d.url}" target="_blank" class="bsm bsm-navy" style="text-decoration:none">⬇ Open</a></td></tr>`).join('');
   }
 
   /* ── Performance ── */
