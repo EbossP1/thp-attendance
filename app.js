@@ -1456,7 +1456,7 @@ class App{
       return !alreadyClockedIn&&leaveOnDate(this.leave,id,todayISOStr);
     });
     $('mgr-stats').innerHTML=`
-      <div class="stat"><div class="stat-lbl">Team Size</div><div class="stat-val">${teamStaff.length}</div></div>
+      <div class="stat stat-teamsize"><div class="stat-lbl">Team Size</div><div class="stat-val">${teamStaff.length}</div></div>
       <div class="stat"><div class="stat-lbl">Present Today</div><div class="stat-val g">${todayRecs.length}</div></div>
       <div class="stat"><div class="stat-lbl">Active Now</div><div class="stat-val a">${active}</div></div>
       <div class="stat"><div class="stat-lbl">On Leave</div><div class="stat-val" style="color:var(--gold)">${onLeaveToday.length}</div></div>
@@ -2215,6 +2215,24 @@ class App{
       const q=this._mgrRepStaffSearch();
       if(q)staffList=staffList.filter(([id,s])=>id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q));
       const allDays=this._mgrRepDays();
+      const mode=$('mgr-rep-mode')?.value||'daily';
+      if(mode==='summary'){
+        const workDays=allDays.filter(dt=>!isHoliday(dt));
+        hdr.innerHTML='<th>Staff ID</th><th>Name</th><th>Unit</th><th>Days Present</th><th>On Leave</th><th>Absent</th><th>Working Days</th>';
+        const srows=staffList.map(([id,s])=>{
+          let present=0,leave=0,absent=0;
+          workDays.forEach(dt=>{
+            const dateStr=fmtD(dt.toISOString());
+            const onLv=leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));
+            if(onLv)leave++;
+            else if(this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr))present++;
+            else absent++;
+          });
+          return{id,name:s.name,unit:s.unit,present,leave,absent};
+        }).sort((a,b)=>b.present-a.present||a.name.localeCompare(b.name));
+        body.innerHTML=srows.length?srows.map(r=>`<tr><td style="color:var(--text2);font-size:.76rem">${r.id}</td><td><strong>${r.name}</strong></td><td>${r.unit}</td><td><span class="badge b-ok">${r.present}</span></td><td><span class="badge" style="background:rgba(99,102,241,.15);color:#4338ca">${r.leave}</span></td><td><span class="badge b-err">${r.absent}</span></td><td>${workDays.length}</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty"><div class="empty-ico">📭</div>No data</div></td></tr>';
+        return;
+      }
       const rows=[];
       allDays.forEach(dt=>{
         const dateStr=fmtD(dt.toISOString());
@@ -2225,8 +2243,8 @@ class App{
           rows.push({id:'—',name:'ALL STAFF',unit:'—',date:dateStr,dt,present:false,onLeave:null,holiday:true,holidayName:holName||'Public Holiday'});
         } else {
           staffList.forEach(([id,s])=>{
-            const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);
-            const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));
+            const onLeave=leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));
+            const present=onLeave?false:this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);
             rows.push({id,name:s.name,unit:s.unit,date:dateStr,dt,present,onLeave,holiday:false});
           });
         }
@@ -2712,7 +2730,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const p=await this._fetchPriv();this._priv=p;
     if(p.hr.includes(id)){
       const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');
-      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));this.renderHRDash('m-');
+      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));document.body.classList.add('hr-mode');this.renderHRDash('m-');
     }
     if(p.cases.includes(id)){const cs=$('nav-mgr-cases');if(cs)cs.classList.remove('cases-tab');}
     if(p.payroll.includes(id)){
