@@ -366,6 +366,7 @@
       <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
       <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts</button>
       <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>Staff Files</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-hrdash','sb-mgr',event);APP.renderHRDash('m-')"><span class="ico">📈</span>HR Dashboard</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-birthdays','sb-mgr',event);APP.renderBirthdays('m-')"><span class="ico">🎂</span>Birthdays</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="ico">📣</span>Announcements</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="ico">📁</span>File Manager</button>
@@ -592,6 +593,18 @@
         </div>
       </div>
       <!-- HR Phase 2 standalone panels -->
+      <div id="m-hrdash" class="panel">
+        <div class="pg-hdr"><h2>📈 HR Dashboard</h2><p>Workforce analytics at a glance</p></div>
+        <div class="tcard"><div class="tcard-hdr"><h4>Headcount</h4><div class="t-btns"><button class="bsm bsm-teal" onclick="APP.renderHRDash('m-')">🔄 Refresh</button></div></div>
+          <div id="m-hd-strip1" class="contract-summary"></div>
+          <div id="m-hd-strip2" class="contract-summary" style="border-top:none"></div>
+        </div>
+        <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>🎂 Birthdays This Month</h4></div><div id="m-hd-bdays" style="padding:1rem 1.3rem;display:flex;flex-wrap:wrap;gap:.8rem"></div></div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem">
+          <div class="tcard" style="flex:1;min-width:280px"><div class="tcard-hdr"><h4>Department Ratio</h4></div><div id="m-hd-units" style="padding:1rem 1.3rem"></div></div>
+          <div class="tcard" style="flex:1;min-width:280px"><div class="tcard-hdr"><h4>Employment Status</h4></div><div id="m-hd-emp" style="padding:1rem 1.3rem"></div></div>
+        </div>
+      </div>
       <div id="m-birthdays" class="panel">
         <div class="pg-hdr"><h2>🎂 Birthdays</h2><p>From staff file dates of birth — nearest first</p></div>
         <div class="tcard"><div class="tcard-hdr"><h4>Upcoming</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-birthdays','Staff Birthdays')">🖨 Print</button></div></div><div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Birthday</th><th>Turns</th><th>In</th></tr></thead><tbody id="m-bd-body"></tbody></table></div></div>
@@ -1079,6 +1092,14 @@
 <div class="overlay" id="hrfile-modal">
   <div class="modal" style="max-width:640px;max-height:88vh;overflow-y:auto"><h3>🗂 Staff File</h3>
     <div id="hf-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="field"><label>Photo</label>
+      <div style="display:flex;align-items:center;gap:.6rem">
+        <img id="hf-photo-prev" src="" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:none;border:2px solid var(--border)">
+        <input type="file" id="hf-photo-file" accept="image/*" style="font-size:.78rem">
+        <button class="bsm bsm-teal" onclick="APP.uploadHRPhoto()">📤 Upload</button>
+      </div>
+    </div>
+    <input type="hidden" id="hf-photo-url">
     <div class="form-row" style="gap:.5rem">
       <div class="field"><label>Date of Birth</label><input type="date" id="hf-dob"></div>
       <div class="field"><label>Phone</label><input type="text" id="hf-phone" placeholder="e.g. 024 XXX XXXX"></div>
