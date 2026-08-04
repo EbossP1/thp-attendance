@@ -704,6 +704,7 @@ function ghBuiltinHolidayISOs(year){
   // Add the ORIGINAL date here; put the new observed date in the Holidays admin panel.
   const HOLIDAY_EXCEPTIONS=[
     '2026-07-01',                  // Republic Day 2026 postponed to 2026-07-03
+    '2026-08-04',                  // Founders' Day 2026 — THP-Ghana working day
   ];
   HOLIDAY_EXCEPTIONS.forEach(d=>holidays.delete(d));
   return holidays;
@@ -2800,20 +2801,29 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const fm={};files.forEach(f=>fm[f.staff_id]=f);
     const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin');
     const now=new Date();now.setHours(0,0,0,0);
-    const box=(n,l,c)=>`<div class="cs-box"><div class="cs-num"${c?` style="color:${c}"`:''}>${n}</div><div class="cs-lbl">${l}</div></div>`;
+    const box=(n,l,c,ic)=>`<div class="cs-box">${ic?`<div style="font-size:1.05rem;line-height:1">${ic}</div>`:''}<div class="cs-num"${c?` style="color:${c}"`:''}>${n}</div><div class="cs-lbl">${l}</div></div>`;
+    // Live attendance stats (org-wide) — merged into one container
+    const todayStr=fmtD(new Date().toISOString());
+    const todayRecs=this.records.filter(r=>fmtD(r.date||r.in)===todayStr);
+    const presToday=new Set(todayRecs.map(r=>r.id)).size;
+    const activeNow=new Set(todayRecs.filter(r=>r.status==='Active').map(r=>r.id)).size;
+    const todayISO2=new Date().toISOString().slice(0,10);
+    const onLvToday=list.filter(([i])=>leaveOnDate(this.leave,i,todayISO2)).length;
+    const pendLv=this.leave.filter(l=>l.status==='Pending').length;
     // Headcount
     const male=list.filter(([i,s])=>(s.gender||'male')==='male').length;
     const female=list.filter(([i,s])=>s.gender==='female').length;
     const d90=new Date(now-90*86400000);
     const newest=list.filter(([i,s])=>s.contractStart&&new Date(s.contractStart)>=d90).length;
-    const ended=list.filter(([i,s])=>s.contractEnd&&new Date(s.contractEnd)<now).length;
-    s1.innerHTML=box(list.length,'Total Staff')+box(male,'Male','#3b82f6')+box(female,'Female','#ec4899')+box(newest,'New (90 days)','#16a34a')+box(ended,'Contract Ended','#dc2626');
+    const attn=list.filter(([i,s])=>this._contractFlag(s.contractEnd).cls==='red').length;
+    s1.innerHTML=box(presToday,'Present Today','#16a34a','✅')+box(activeNow,'Active Now','#f59e0b','🕒')+box(onLvToday,'On Leave','#6366f1','🌴')+box(pendLv,'Pending Leave','#818cf8','⏳')
+      +box(list.length,'Total Staff','','👥')+box(male,'Male','#3b82f6','👨')+box(female,'Female','#ec4899','👩')+box(newest,'New (90 days)','#16a34a','🆕')+box(attn,'Contract Alerts','#dc2626','📄');
     // Ages + tenure
     const ages=list.map(([i])=>fm[i]?.dob).filter(Boolean).map(d=>Math.floor((now-new Date(String(d).slice(0,10)))/(365.25*86400000))).filter(a=>a>0&&a<100);
     const tenures=list.map(([i,s])=>s.contractStart).filter(Boolean).map(d=>(now-new Date(d))/(365.25*86400000)).filter(t=>t>=0);
     const s2=$(p+'hd-strip2');
     if(s2)s2.innerHTML=ages.length
-      ? box(Math.min(...ages),'Youngest')+box(Math.max(...ages),'Oldest')+box((ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1),'Average Age')+box(ages.length+'/'+list.length,'DOBs on File')+box(tenures.length?(tenures.reduce((a,b)=>a+b,0)/tenures.length).toFixed(1)+' yrs':'—','Avg Tenure')
+      ? box(Math.min(...ages),'Youngest','','🧒')+box(Math.max(...ages),'Oldest','','🧓')+box((ages.reduce((a,b)=>a+b,0)/ages.length).toFixed(1),'Average Age','','📊')+box(ages.length+'/'+list.length,'DOBs on File','','🗂')+box(tenures.length?(tenures.reduce((a,b)=>a+b,0)/tenures.length).toFixed(1)+' yrs':'—','Avg Tenure','','⏱')
       : '<div style="color:var(--text3);font-size:.78rem;padding:.4rem">Add dates of birth in Staff Files to see age analytics.</div>';
     // Birthdays this month
     const bd=$(p+'hd-bdays');
@@ -2847,6 +2857,18 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
         +`<div style="font-size:.7rem;color:var(--text3);margin-top:.5rem">Gender ratio: ${male} M : ${female} F</div>`;
     }
   }
+  async _bdPrefill(){
+    const id=$('m-bd-staff')?.value;if(!id)return;
+    const f=await API.getHRFile(id);
+    $('m-bd-dob').value=f?.dob?String(f.dob).slice(0,10):'';
+  }
+  async saveBirthday(){
+    const id=$('m-bd-staff')?.value,dob=$('m-bd-dob')?.value;
+    if(!id||!dob)return toast('Select staff and date','err');
+    const r=await API._upsert('hr_staff_files',[{staff_id:id,dob}]);
+    if(r){toast('Date of birth saved ✓');this.renderBirthdays('m-');this.renderHRDash('m-');}
+    else toast('Save failed','err');
+  }
   async uploadHRPhoto(){
     const inp=$('hf-photo-file');const id=$('hf-id').value;
     if(!inp?.files?.length)return toast('Choose an image first','err');
@@ -2868,6 +2890,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
 
   /* ── Birthdays ── */
   async renderBirthdays(p){
+    this._popStaffSel('m-bd-staff');
     const body=$(p+'bd-body');if(!body)return;
     body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
     const files=await API._get('hr_staff_files','select=staff_id,dob')||[];
