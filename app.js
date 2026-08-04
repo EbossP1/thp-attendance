@@ -1042,6 +1042,7 @@ class App{
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(this.user.name);mav.style.background=this.user.color||avColor(this.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=this.user.name;
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
+        this.renderStaffFeed();this.checkBirthdayWish();
         (this._applyPrivileges?this:APP)._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
@@ -2892,6 +2893,12 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const f=await API.getHRFile(id);
     $('m-bd-dob').value=f?.dob?String(f.dob).slice(0,10):'';
   }
+  async editBirthday(id){
+    const sel=$('m-bd-staff');if(sel)sel.value=id;
+    await this._bdPrefill();
+    $('m-bd-dob')?.focus();
+    $('m-bd-staff')?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
   async saveBirthday(){
     const id=$('m-bd-staff')?.value,dob=$('m-bd-dob')?.value;
     if(!id||!dob)return toast('Select staff and date','err');
@@ -2936,7 +2943,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     body.innerHTML=rows.map(r=>{
       const s=this.staff[r.id];
       const when=r.days===0?'<span class="c-flag green">🎉 Today!</span>':r.days<=14?`<span class="c-flag amber">${r.days}d</span>`:`<span class="c-flag none">${r.days}d</span>`;
-      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${r.id}</span></td><td style="font-size:.8rem">${s.unit||'—'}</td><td>${r.dob.getDate()} ${r.dob.toLocaleString('en',{month:'short'})}</td><td>${r.age}</td><td>${when}</td></tr>`;
+      return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${r.id}</span></td><td style="font-size:.8rem">${s.unit||'—'}</td><td>${r.dob.getDate()} ${r.dob.toLocaleString('en',{month:'short'})}</td><td>${when}</td><td><button class="bsm bsm-navy" onclick="APP.editBirthday('${r.id}')">✏ Edit</button></td></tr>`;
     }).join('');
   }
 
@@ -2961,19 +2968,36 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ── File Manager — organizational document library ── */
+  _visLabel(v){return{staff:'All Staff',managers:'Managers Only',cl:'Country Leader Only',hr:'HR Only'}[v]||'All Staff';}
   async renderFileMgr(p){
     const body=$('m-fm-body');if(!body)return;
-    body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
+    body.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Loading…</td></tr>';
     const rows=await API._get('org_documents','order=created_at.desc&limit=300')||[];
     this._orgDocs=rows;
-    if(!rows.length){body.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-ico">📁</div>No documents in the library yet — upload above</div></td></tr>';return;}
-    body.innerHTML=rows.map(d=>`<tr><td><a href="${d.url}" target="_blank" style="color:var(--teal);font-weight:600">📎 ${d.name}</a></td>
-      <td style="font-size:.8rem">${d.category||'General'}</td>
-      <td><select class="fi" style="width:110px;font-size:.74rem" onchange="APP.setOrgDocVis('${d.id}',this.value)">
-        <option value="staff" ${d.visibility==='staff'?'selected':''}>All Staff</option>
-        <option value="hr" ${d.visibility==='hr'?'selected':''}>HR Only</option></select></td>
-      <td style="font-size:.76rem">${String(d.created_at).slice(0,10)}<br><span style="color:var(--text3);font-size:.68rem">${d.uploaded_by||''}</span></td>
-      <td><button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.delOrgDoc('${d.id}')">🗑 Delete</button></td></tr>`).join('');
+    if(!rows.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📁</div>No documents in the library yet — upload above</div></td></tr>';return;}
+    const isHR=this.user.id===HR_MANAGER_ID||this.user.role==='admin';
+    body.innerHTML=rows.map(d=>{
+      const acc=d.access_level||'download';
+      const visCell=isHR
+        ? `<select class="fi" style="width:150px;font-size:.74rem" onchange="APP.setOrgDocField('${d.id}','visibility',this.value)">
+            ${['staff','managers','cl','hr'].map(v=>`<option value="${v}" ${d.visibility===v?'selected':''}>${this._visLabel(v)}</option>`).join('')}</select>`
+        : `<span class="c-flag none">${this._visLabel(d.visibility)}</span>`;
+      const accCell=isHR
+        ? `<select class="fi" style="width:130px;font-size:.74rem" onchange="APP.setOrgDocField('${d.id}','access_level',this.value)">
+            <option value="download" ${acc==='download'?'selected':''}>View &amp; Download</option>
+            <option value="view" ${acc==='view'?'selected':''}>View Only</option></select>`
+        : `<span class="c-flag ${acc==='view'?'amber':'green'}">${acc==='view'?'View only':'Download'}</span>`;
+      return `<tr><td><a href="${d.url}" target="_blank" style="color:var(--teal);font-weight:600">📎 ${d.name}</a></td>
+        <td style="font-size:.8rem">${d.category||'General'}</td>
+        <td>${visCell}</td><td>${accCell}</td>
+        <td style="font-size:.76rem">${String(d.created_at).slice(0,10)}<br><span style="color:var(--text3);font-size:.68rem">${d.uploaded_by||''}</span></td>
+        <td>${isHR?`<button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.delOrgDoc('${d.id}')">🗑 Delete</button>`:''}</td></tr>`;
+    }).join('');
+  }
+  async setOrgDocField(id,field,val){
+    if(this.user.id!==HR_MANAGER_ID&&this.user.role!=='admin')return toast('Only HR can change access','err');
+    const r=await API._update('org_documents','id=eq.'+encodeURIComponent(id),{[field]:val});
+    if(r!==null)toast('Access updated ✓');else toast('Update failed: '+(API.lastError||''),'err');
   }
   async uploadOrgDoc(){
     if(this._odBusy)return toast('An upload is already in progress…','info');
@@ -2990,7 +3014,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       if(!r)         {msg.innerHTML='<span style="color:var(--red)">No response from Google Drive. Check the Apps Script deployment.</span>';return;}
       if(!r.success) {msg.innerHTML='<span style="color:var(--red)">Drive upload failed: '+(r.error||'unknown')+'</span>';return;}
       msg.innerHTML='<span style="color:var(--teal)">⏳ Saving to library…</span>';
-      const ins=await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
+      const ins=await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,access_level:$('m-od-acc').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
       if(!ins){msg.innerHTML='<span style="color:var(--red)">File reached Drive but the library record failed: '+(API.lastError||'unknown')+'</span>';return;}
       inp.value='';
       msg.innerHTML='<span style="color:var(--green)">✓ Uploaded and listed in the library.</span>';
@@ -3007,12 +3031,80 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     await API._delete('org_documents','id=eq.'+encodeURIComponent(id));
     this.renderFileMgr('m-');
   }
+  _visibleDocFilter(){
+    const uid=this.user.id,role=this.user.role;
+    const allowed=['staff'];
+    if(role==='manager'||role==='country_leader')allowed.push('managers');
+    if(uid===COUNTRY_LEADER_ID)allowed.push('cl');
+    if(uid===HR_MANAGER_ID||role==='admin')allowed.push('managers','cl','hr');
+    return [...new Set(allowed)];
+  }
+  _docRow(d){
+    const acc=d.access_level||'download';
+    const btn=acc==='view'
+      ? `<a href="${d.url}" target="_blank" class="bsm" style="text-decoration:none;background:var(--surf2);color:var(--text2);border:1px solid var(--border)">👁 View</a>`
+      : `<a href="${d.url}" target="_blank" class="bsm bsm-navy" style="text-decoration:none">⬇ Download</a>`;
+    return `<tr><td style="font-weight:600">📎 ${d.name}</td><td style="font-size:.8rem">${d.category||'General'}</td><td style="font-size:.78rem">${String(d.created_at).slice(0,10)}</td><td>${btn}</td></tr>`;
+  }
   async renderStaffDocs(){
     const body=$('st-docs-body');if(!body)return;
     body.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Loading…</td></tr>';
-    const rows=await API._get('org_documents','visibility=eq.staff&order=created_at.desc&limit=300')||[];
-    if(!rows.length){body.innerHTML='<tr><td colspan="4"><div class="empty"><div class="empty-ico">📁</div>No documents shared yet</div></td></tr>';return;}
-    body.innerHTML=rows.map(d=>`<tr><td style="font-weight:600">📎 ${d.name}</td><td style="font-size:.8rem">${d.category||'General'}</td><td style="font-size:.78rem">${String(d.created_at).slice(0,10)}</td><td><a href="${d.url}" target="_blank" class="bsm bsm-navy" style="text-decoration:none">⬇ Open</a></td></tr>`).join('');
+    const vis=this._visibleDocFilter().map(v=>'"'+v+'"').join(',');
+    const rows=await API._get('org_documents','visibility=in.('+vis+')&order=created_at.desc&limit=300')||[];
+    body.innerHTML=rows.length?rows.map(d=>this._docRow(d)).join('')
+      :'<tr><td colspan="4"><div class="empty"><div class="empty-ico">📁</div>No documents shared yet</div></td></tr>';
+  }
+  /* ── Staff dashboard feed: announcements + documents ── */
+  async renderStaffFeed(){
+    const al=$('st-ann-list');
+    if(al){
+      const anns=await API._get('announcements','order=created_at.desc&limit=5')||[];
+      al.innerHTML=anns.length?anns.map(a=>`<div class="ann-card"><h5>${a.title}</h5><div style="font-size:.8rem;white-space:pre-wrap">${a.body||''}</div><div class="ann-meta">${a.author||''} · ${String(a.created_at).slice(0,10)}</div></div>`).join('')
+        :'<div style="color:var(--text3);font-size:.8rem">No announcements yet.</div>';
+    }
+    const fd=$('st-feed-docs');
+    if(fd){
+      const vis=this._visibleDocFilter().map(v=>'"'+v+'"').join(',');
+      const rows=await API._get('org_documents','visibility=in.('+vis+')&order=created_at.desc&limit=10')||[];
+      fd.innerHTML=rows.length?rows.map(d=>this._docRow(d)).join('')
+        :'<tr><td colspan="4" style="color:var(--text3);font-size:.8rem">No documents shared yet.</td></tr>';
+    }
+  }
+  /* ── Birthday wish popup (once per year, on the staff\'s own birthday) ── */
+  async checkBirthdayWish(){
+    try{
+      const uid=this.user?.id;if(!uid)return;
+      const yr=new Date().getFullYear();
+      if(localStorage.getItem('thp_bday_'+uid+'_'+yr))return;
+      const f=await API.getHRFile(uid);
+      if(!f?.dob)return;
+      const d=new Date(String(f.dob).slice(0,10)),now=new Date();
+      if(d.getMonth()!==now.getMonth()||d.getDate()!==now.getDate())return;
+      localStorage.setItem('thp_bday_'+uid+'_'+yr,'1');
+      this._showBirthdayPopup(this.user.name.split(' ')[0]);
+    }catch(e){}
+  }
+  _showBirthdayPopup(firstName){
+    const ov=document.createElement('div');
+    ov.className='bday-overlay';
+    ov.innerHTML='<div class="bday-card">'
+      +'<div class="bday-cake">🎂</div>'
+      +'<h2>Happy Birthday, '+firstName+'!</h2>'
+      +'<p>Wishing you a wonderful year ahead.<br>From all of us at The Hunger Project — Ghana 🎉</p>'
+      +'<button class="btn-add" style="margin:.6rem auto 0" onclick="this.closest(\'.bday-overlay\').remove()">Thank you! 🎈</button>'
+      +'</div>';
+    const colors=['#F5A623','#3DBFB8','#2D3592','#ef4444','#22c55e','#ec4899','#a855f7'];
+    for(let i=0;i<60;i++){
+      const c=document.createElement('span');
+      c.className='bday-confetti';
+      c.style.left=Math.random()*100+'%';
+      c.style.background=colors[i%colors.length];
+      c.style.animationDelay=(Math.random()*2.2)+'s';
+      c.style.animationDuration=(2.4+Math.random()*1.8)+'s';
+      ov.appendChild(c);
+    }
+    document.body.appendChild(ov);
+    setTimeout(()=>{if(ov.parentNode)ov.remove();},14000);
   }
 
   /* ── Performance ── */
@@ -3546,6 +3638,7 @@ const APP=new App();
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
         const mn=$('mob-st-name');if(mn)mn.textContent=APP.user.name;
         APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._initWorkModeListeners();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
+        APP.renderStaffFeed();APP.checkBirthdayWish();
         (this._applyPrivileges?this:APP)._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
