@@ -612,6 +612,13 @@
       <!-- HR Phase 2 standalone panels -->
       <div id="m-birthdays" class="panel">
         <div class="pg-hdr"><h2>🎂 Birthdays</h2><p>From staff file dates of birth — nearest first</p></div>
+        <div class="tcard" style="margin-bottom:1rem"><div class="tcard-hdr"><h4>➕ Add / Update Date of Birth</h4></div>
+          <div style="padding:1rem 1.3rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="min-width:230px;margin:0"><label>Staff</label><select id="m-bd-staff" class="fi" onchange="APP._bdPrefill()"></select></div>
+            <div class="field" style="margin:0"><label>Date of Birth</label><input type="date" id="m-bd-dob"></div>
+            <button class="btn-add" style="margin:0" onclick="APP.saveBirthday()">💾 Save</button>
+          </div>
+        </div>
         <div class="tcard"><div class="tcard-hdr"><h4>Upcoming</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-birthdays','Staff Birthdays')">🖨 Print</button></div></div><div class="scr"><table><thead><tr><th>Staff</th><th>Unit</th><th>Birthday</th><th>Turns</th><th>In</th></tr></thead><tbody id="m-bd-body"></tbody></table></div></div>
         <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);margin-top:1rem">💡 Add dates of birth in HR Files for staff missing here.</div>
       </div>
