@@ -175,13 +175,23 @@ const API={
       'Prefer':'return=representation'
     };
   },
+  lastError:'',
   async _supa(path,opts={}){
     try{
       const r=await fetch(SUPABASE.URL+'/rest/v1/'+path,{headers:this._headers(),...opts});
-      if(!r.ok){console.warn('Supabase error:',r.status,await r.text());return null;}
+      if(!r.ok){
+        const body=await r.text();
+        let msg=body;
+        try{const j=JSON.parse(body);msg=j.message||j.hint||j.details||body;}catch(e){}
+        if(r.status===404||/does not exist/i.test(msg))msg='Database table/column missing — run the pending SQL migration in Supabase. ('+msg+')';
+        this.lastError=msg;
+        console.warn('Supabase error:',r.status,path,msg);
+        return null;
+      }
+      this.lastError='';
       const text=await r.text();
       return text?JSON.parse(text):[];
-    }catch(e){console.warn('Supabase fetch:',e);return null;}
+    }catch(e){this.lastError=e.message||'Network error';console.warn('Supabase fetch:',e);return null;}
   },
   async _get(table,query=''){return this._supa(table+(query?'?'+query:''));},
   async _insert(table,data){return this._supa(table,{method:'POST',body:JSON.stringify(data)});},
@@ -2794,6 +2804,24 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   /* ── HR Dashboard analytics ── */
   _drivePhoto(url){if(!url)return'';const m=String(url).match(/[-\w]{25,}/);return m?'https://drive.google.com/thumbnail?id='+m[0]+'&sz=w200':'';}
   _empType(u){u=(u||'').toLowerCase();return u.includes('national service')?'National Service':u.includes('intern')?'Intern':'Full Staff';}
+  _donut(items,total,centreLabel){
+    if(!items.length||!total)return'<div style="color:var(--text3);font-size:.78rem">No data</div>';
+    let acc=0;
+    const stops=items.map(it=>{const a=acc;acc+=it.n/total*100;return `${it.color} ${a.toFixed(2)}% ${acc.toFixed(2)}%`;}).join(',');
+    const legend=items.map(it=>`<div style="display:flex;align-items:center;gap:.45rem;margin-bottom:.38rem;font-size:.76rem">
+      <span style="width:10px;height:10px;border-radius:3px;background:${it.color};flex:0 0 auto"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span>
+      <span style="color:var(--text3);font-variant-numeric:tabular-nums">${it.n} · ${Math.round(it.n/total*100)}%</span></div>`).join('');
+    return `<div style="display:flex;gap:1.2rem;align-items:center;flex-wrap:wrap">
+      <div style="width:148px;height:148px;border-radius:50%;background:conic-gradient(${stops});flex:0 0 auto;position:relative;box-shadow:0 2px 10px rgba(0,0,0,.08)">
+        <div style="position:absolute;inset:27%;background:var(--surf);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:1.35rem;font-weight:700;line-height:1">${total}</div>
+          <div style="font-size:.58rem;color:var(--text3);letter-spacing:.5px;text-transform:uppercase">${centreLabel||''}</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:160px">${legend}</div>
+    </div>`;
+  }
   async renderHRDash(p){
     const s1=$(p+'hd-strip1');if(!s1)return;
     s1.innerHTML='<div style="color:var(--text3);font-size:.8rem;padding:.4rem">Loading…</div>';
@@ -2816,8 +2844,9 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const d90=new Date(now-90*86400000);
     const newest=list.filter(([i,s])=>s.contractStart&&new Date(s.contractStart)>=d90).length;
     const attn=list.filter(([i,s])=>this._contractFlag(s.contractEnd).cls==='red').length;
-    s1.innerHTML=box(presToday,'Present Today','#16a34a','✅')+box(activeNow,'Active Now','#f59e0b','🕒')+box(onLvToday,'On Leave','#6366f1','🌴')+box(pendLv,'Pending Leave','#818cf8','⏳')
-      +box(list.length,'Total Staff','','👥')+box(male,'Male','#3b82f6','👨')+box(female,'Female','#ec4899','👩')+box(newest,'New (90 days)','#16a34a','🆕')+box(attn,'Contract Alerts','#dc2626','📄');
+    s1.innerHTML=box(list.length,'Total Staff','','👥')+box(female,'Female','#ec4899','👩')+box(male,'Male','#3b82f6','👨')
+      +box(presToday,'Present Today','#16a34a','✅')+box(activeNow,'Active Now','#f59e0b','🕒')+box(onLvToday,'On Leave','#6366f1','🌴')+box(pendLv,'Pending Leave','#818cf8','⏳')
+      +box(newest,'New (90 days)','#16a34a','🆕')+box(attn,'Contract Alerts','#dc2626','📄');
     // Ages + tenure
     const ages=list.map(([i])=>fm[i]?.dob).filter(Boolean).map(d=>Math.floor((now-new Date(String(d).slice(0,10)))/(365.25*86400000))).filter(a=>a>0&&a<100);
     const tenures=list.map(([i,s])=>s.contractStart).filter(Boolean).map(d=>(now-new Date(d))/(365.25*86400000)).filter(t=>t>=0);
@@ -2842,19 +2871,20 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       }).join(''):'<div style="color:var(--text3);font-size:.78rem">No birthdays this month (or no DOBs on file).</div>';
     }
     // Ratios
-    const bar=(label,n,total,color)=>{const pct=total?Math.round(n/total*100):0;return`<div style="margin-bottom:.55rem"><div style="display:flex;justify-content:space-between;font-size:.76rem;margin-bottom:2px"><span>${label}</span><span style="color:var(--text3)">${n} · ${pct}%</span></div><div style="height:8px;background:var(--surf2);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div></div>`;};
     const uEl=$(p+'hd-units');
     if(uEl){
       const uc={};list.forEach(([i,s])=>{const u=(s.unit||'Unassigned').trim()||'Unassigned';uc[u]=(uc[u]||0)+1;});
       const cols=['#2D3592','#3DBFB8','#F5A623','#22c55e','#ef4444','#a855f7','#06b6d4','#ec4899','#f97316','#818cf8'];
-      uEl.innerHTML=Object.entries(uc).sort((a,b)=>b[1]-a[1]).map(([u,n],i)=>bar(u,n,list.length,cols[i%cols.length])).join('');
+      const items=Object.entries(uc).sort((a,b)=>b[1]-a[1]).map(([u,n],i)=>({label:u,n,color:cols[i%cols.length]}));
+      uEl.innerHTML=this._donut(items,list.length,'Staff');
     }
     const eEl=$(p+'hd-emp');
     if(eEl){
       const ec={};list.forEach(([i,s])=>{const t=this._empType(s.unit);ec[t]=(ec[t]||0)+1;});
       const ecol={'Full Staff':'#22c55e','Intern':'#F5A623','National Service':'#3DBFB8'};
-      eEl.innerHTML=Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([t,n])=>bar(t,n,list.length,ecol[t]||'#818cf8')).join('')
-        +`<div style="font-size:.7rem;color:var(--text3);margin-top:.5rem">Gender ratio: ${male} M : ${female} F</div>`;
+      const items=Object.entries(ec).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({label:t,n,color:ecol[t]||'#818cf8'}));
+      eEl.innerHTML=this._donut(items,list.length,'Staff')
+        +`<div style="font-size:.72rem;color:var(--text3);margin-top:.7rem;text-align:center">Gender ratio — 👩 ${female} : 👨 ${male}</div>`;
     }
   }
   async _bdPrefill(){
@@ -2867,7 +2897,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!id||!dob)return toast('Select staff and date','err');
     const r=await API._upsert('hr_staff_files',[{staff_id:id,dob}]);
     if(r){toast('Date of birth saved ✓');this.renderBirthdays('m-');this.renderHRDash('m-');}
-    else toast('Save failed','err');
+    else toast('Save failed: '+(API.lastError||'unknown error'),'err');
   }
   async uploadHRPhoto(){
     const inp=$('hf-photo-file');const id=$('hf-id').value;
@@ -2923,7 +2953,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!t)return toast('Title required','err');
     const r=await API._upsert('announcements',[{id:this._uid('ANN'),title:t,body:b,author:this.user.name,created_at:new Date().toISOString()}]);
     if(r){$(p+'ann-title').value='';$(p+'ann-body').value='';toast('Announcement posted ✓');this.renderAnnouncements(p);}
-    else toast('Post failed','err');
+    else toast('Post failed: '+(API.lastError||'unknown error'),'err');
   }
   async delAnnouncement(id,p){
     await API._delete('announcements','id=eq.'+encodeURIComponent(id));
@@ -2946,21 +2976,27 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       <td><button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.delOrgDoc('${d.id}')">🗑 Delete</button></td></tr>`).join('');
   }
   async uploadOrgDoc(){
+    if(this._odBusy)return toast('An upload is already in progress…','info');
     const inp=$('m-od-file');const msg=$('m-od-msg');
     if(!inp?.files?.length)return toast('Choose a file first','err');
     const file=inp.files[0];
     if(file.size>5*1024*1024)return toast('File too large (max 5MB)','err');
-    msg.innerHTML='<span style="color:var(--teal)">⏳ Uploading…</span>';
+    this._odBusy=true;
+    const mb=(file.size/1048576).toFixed(1);
+    msg.innerHTML='<span style="color:var(--teal)">⏳ Uploading '+mb+' MB to Drive — larger files can take 20-60 seconds…</span>';
     try{
       const b64=await this._fileToBase64(file);
       const r=await API.gasPost({action:'uploadHRDoc',staffId:'ORG',fileName:file.name,fileData:b64,mimeType:file.type});
-      if(r&&r.success&&r.fileUrl){
-        await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
-        inp.value='';
-        msg.innerHTML='<span style="color:var(--green)">✓ Uploaded to library.</span>';
-        this.renderFileMgr('m-');
-      }else msg.innerHTML='<span style="color:var(--red)">Upload failed.</span>';
-    }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+      if(!r)         {msg.innerHTML='<span style="color:var(--red)">No response from Google Drive. Check the Apps Script deployment.</span>';return;}
+      if(!r.success) {msg.innerHTML='<span style="color:var(--red)">Drive upload failed: '+(r.error||'unknown')+'</span>';return;}
+      msg.innerHTML='<span style="color:var(--teal)">⏳ Saving to library…</span>';
+      const ins=await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
+      if(!ins){msg.innerHTML='<span style="color:var(--red)">File reached Drive but the library record failed: '+(API.lastError||'unknown')+'</span>';return;}
+      inp.value='';
+      msg.innerHTML='<span style="color:var(--green)">✓ Uploaded and listed in the library.</span>';
+      await this.renderFileMgr('m-');
+    }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error: '+(e.message||e)+'</span>';}
+    finally{this._odBusy=false;}
   }
   async setOrgDocVis(id,vis){
     await API._update('org_documents','id=eq.'+encodeURIComponent(id),{visibility:vis});
