@@ -2,7 +2,7 @@
 // ⚠ DEPLOY RULE: bump the version number below on EVERY deploy
 // (v2 → v3 → v4 …). That one change makes all installed apps
 // fetch fresh files and reload themselves automatically.
-const CACHE_NAME = 'thp-attendance-v3.3';
+const CACHE_NAME = 'thp-attendance-v3.4';
 const ASSETS = ['/', '/index.html', '/app.js', '/styles.css'];
 
 self.addEventListener('install', event => {
