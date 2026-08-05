@@ -688,22 +688,28 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 @keyframes bdayBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
 .bday-confetti{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;opacity:.9;animation-name:bdayFall;animation-timing-function:linear;animation-iteration-count:infinite}
 @keyframes bdayFall{0%{transform:translateY(-10vh) rotate(0);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:.25}}
-/* Login: split panel — brand | farmers video */
-.lc-left-inner{display:block}
-@media(min-width:1000px){
-  .lc-left{flex:0 0 52%;max-width:52%}
-  .lc-left-inner{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:center}
-  .lc-brand-col{min-width:0}
-  .lc-video-wrap{margin-top:0;padding-top:0;border-top:0;border-left:1px solid rgba(255,255,255,.16);padding-left:1.5rem;height:100%;justify-content:center}
-  .lc-video{max-width:100%;max-height:min(62vh,520px)}
+/* Login: brand column + full-bleed farmers video that blends into the blue */
+.lc-left{padding:0;justify-content:stretch;align-items:stretch}
+.lc-left-inner{display:flex;align-items:stretch;width:100%;min-height:100%}
+.lc-brand-col{flex:1 1 48%;min-width:0;padding:3rem 1.6rem 3rem 2.6rem;
+  display:flex;flex-direction:column;justify-content:center;position:relative;z-index:2}
+.lc-video-wrap{flex:1 1 52%;position:relative;overflow:hidden;margin:0;padding:0;border:0;min-height:420px}
+.lc-video{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;
+  aspect-ratio:auto;object-fit:cover;border:0;border-radius:0;box-shadow:none;background:transparent}
+/* soft gradient so the footage melts into the panel colour */
+.lc-video-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(90deg,#2D3592 0%,rgba(45,53,146,.92) 12%,rgba(45,53,146,.45) 34%,rgba(45,53,146,.12) 58%,rgba(13,19,64,.28) 100%),
+    linear-gradient(180deg,rgba(13,19,64,.42) 0%,transparent 26%,transparent 72%,rgba(13,19,64,.55) 100%)}
+.lc-video-cap{display:none}
+.lc-tagline{max-width:15ch}
+@media(max-width:900px){
+  .lc-left-inner{flex-direction:column}
+  .lc-brand-col{flex:none;padding:2rem 1.8rem 1rem}
+  .lc-video-wrap{flex:none;min-height:230px}
+  .lc-video-wrap::after{background:linear-gradient(180deg,rgba(45,53,146,.85) 0%,rgba(45,53,146,.25) 40%,rgba(13,19,64,.45) 100%)}
 }
-.lc-video-wrap{margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid rgba(255,255,255,.14);
-  display:flex;flex-direction:column;align-items:center;gap:.6rem}
-.lc-video{width:100%;max-width:300px;aspect-ratio:9/16;max-height:min(52vh,440px);object-fit:cover;
-  border-radius:18px;border:3px solid rgba(255,255,255,.26);
-  box-shadow:0 18px 46px rgba(0,0,0,.42);background:rgba(255,255,255,.06);display:block}
-.lc-video-cap{font-size:.82rem;letter-spacing:.4px;color:rgba(255,255,255,.82);font-weight:600}
-@media(max-height:820px){.lc-video{max-height:38vh}.lc-logo{width:54px;margin-bottom:.7rem}.lc-title{font-size:1.45rem}}
+@media(max-height:780px){.lc-brand-col{padding-top:2rem;padding-bottom:2rem}.lc-logo{width:54px;margin-bottom:.7rem}.lc-title{font-size:1.5rem}}
 /* Audit trail + HR assistant */
 .au-row td{font-size:.78rem}
 .ai-chat{max-height:420px;overflow-y:auto;padding:1rem 1.3rem;display:flex;flex-direction:column;gap:.7rem}
