@@ -108,6 +108,30 @@ function showView(id){
   if(id==='manager-view' &&$('mob-nav-mgr'))   $('mob-nav-mgr').style.display='block';
   if(id==='admin-view'   &&$('mob-nav-admin')) $('mob-nav-admin').style.display='block';
 }
+function toggleNavGroup(id){
+  const g=document.getElementById(id);if(!g)return;
+  const h=g.querySelector('.nav-grp-hdr'),b=g.querySelector('.nav-grp-body');
+  const willCollapse=!h.classList.contains('collapsed');
+  h.classList.toggle('collapsed',willCollapse);
+  b.classList.toggle('hidden',willCollapse);
+  try{localStorage.setItem('thp_nav_'+id,willCollapse?'0':'1');}catch(e){}
+}
+function _restoreNavGroups(){
+  document.querySelectorAll('.nav-group').forEach(g=>{
+    let v=null;try{v=localStorage.getItem('thp_nav_'+g.id);}catch(e){}
+    const h=g.querySelector('.nav-grp-hdr'),b=g.querySelector('.nav-grp-body');
+    if(!h||!b)return;
+    const collapsed=v===null?h.classList.contains('collapsed'):v==='0';
+    h.classList.toggle('collapsed',collapsed);
+    b.classList.toggle('hidden',collapsed);
+  });
+}
+function _hideEmptyNavGroups(){
+  document.querySelectorAll('.nav-group').forEach(g=>{
+    const vis=[...g.querySelectorAll('.nav-item')].filter(n=>getComputedStyle(n).display!=='none');
+    g.classList.toggle('empty',vis.length===0);
+  });
+}
 function showPanel(id,sbId,e){
   $(sbId).nextElementSibling.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   $(id).classList.add('active');
@@ -1029,7 +1053,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        this._applyPrivileges(id);this._checkContractReminders();
+        this._applyPrivileges(id);this._checkContractReminders();setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},120);
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -2724,6 +2748,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
     const r=await API.saveHRFile(id,data);
     if(r&&r.success){
+      this.audit('Staff file updated','HR',this.staff[id]?.name||id,'');
       closeModal('hrfile-modal');
       this.renderHRFiles('a-');this.renderHRFiles('m-');
       toast('Staff file saved ✓');
@@ -2742,7 +2767,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const p=await this._fetchPriv();this._priv=p;
     if(p.hr.includes(id)){
       const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');
-      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));document.body.classList.add('hr-mode');this.renderHRDash('m-');
+      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));document.body.classList.add('hr-mode');this.renderHRDash('m-');setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},60);
     }
     if(p.cases.includes(id)){const cs=$('nav-mgr-cases');if(cs)cs.classList.remove('cases-tab');}
     if(p.payroll.includes(id)){
@@ -2764,7 +2789,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const grab=c=>[...document.querySelectorAll('.'+c+':checked')].map(e=>e.value);
     const p={hr:grab('pv-hr'),cases:grab('pv-cases'),payroll:grab('pv-pay')};
     const r=await API._upsert('settings',[{key:'privileges',value:JSON.stringify(p)}]);
-    if(r)toast('Privileges saved ✓ — takes effect at each person\'s next login');
+    if(r){this.audit('Privileges changed','Security','',JSON.stringify(p));toast('Privileges saved ✓ — takes effect at each person\'s next login');}
     else toast('Save failed','err');
   }
 
@@ -3017,6 +3042,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const ins=await API._upsert('org_documents',[{id:this._uid('OD'),name:file.name,url:r.fileUrl,category:$('m-od-cat').value,visibility:$('m-od-vis').value,access_level:$('m-od-acc').value,uploaded_by:this.user.name,created_at:new Date().toISOString()}]);
       if(!ins){msg.innerHTML='<span style="color:var(--red)">File reached Drive but the library record failed: '+(API.lastError||'unknown')+'</span>';return;}
       inp.value='';
+      this.audit('Document uploaded','Document',file.name,$('m-od-vis').value+' / '+$('m-od-acc').value);
       msg.innerHTML='<span style="color:var(--green)">✓ Uploaded and listed in the library.</span>';
       await this.renderFileMgr('m-');
     }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error: '+(e.message||e)+'</span>';}
@@ -3105,6 +3131,148 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     }
     document.body.appendChild(ov);
     setTimeout(()=>{if(ov.parentNode)ov.remove();},14000);
+  }
+
+  /* ═══════════════════════════════════════════
+     AUDIT TRAIL — records key actions
+  ═══════════════════════════════════════════ */
+  async audit(action,category,target,detail){
+    try{
+      await API._upsert('audit_log',[{id:this._uid('AU'),actor_id:this.user?.id||'',actor_name:this.user?.name||'System',
+        action,category:category||'General',target:target||'',detail:detail||'',created_at:new Date().toISOString()}]);
+    }catch(e){}
+  }
+  async renderAudit(){
+    const body=$('au-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Loading…</td></tr>';
+    let rows=await API._get('audit_log','order=created_at.desc&limit=400')||[];
+    const cat=$('au-cat')?.value||'',q=($('au-search')?.value||'').trim().toLowerCase();
+    if(cat)rows=rows.filter(r=>r.category===cat);
+    if(q)rows=rows.filter(r=>[r.actor_name,r.action,r.target,r.detail].join(' ').toLowerCase().includes(q));
+    this._auditRows=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">🛡</div>No activity recorded yet</div></td></tr>';return;}
+    const cc={Auth:'none',Leave:'amber',Staff:'none',HR:'green',Payroll:'amber',Document:'none',Security:'red'};
+    body.innerHTML=rows.map(r=>{
+      const d=new Date(r.created_at);
+      return `<tr class="au-row"><td style="white-space:nowrap">${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}<br><span style="font-size:.68rem;color:var(--text3)">${d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></td>
+        <td><strong>${r.actor_name||'—'}</strong></td>
+        <td>${r.action||''}</td>
+        <td><span class="c-flag ${cc[r.category]||'none'}">${r.category||'General'}</span></td>
+        <td>${r.target||'—'}</td>
+        <td style="color:var(--text2)">${r.detail||''}</td></tr>`;
+    }).join('');
+  }
+  exportAudit(){
+    const rows=this._auditRows||[];
+    if(!rows.length)return toast('Nothing to export','err');
+    let csv='When,Who,Action,Category,Affected,Detail\n';
+    rows.forEach(r=>{csv+=`"${new Date(r.created_at).toLocaleString('en-GB')}","${r.actor_name||''}","${r.action||''}","${r.category||''}","${r.target||''}","${(r.detail||'').replace(/"/g,'""')}"\n`;});
+    this._dl(csv,'THP_Audit_'+Date.now()+'.csv','text/csv');
+  }
+
+  /* ═══════════════════════════════════════════
+     ASK HR — answers from THP-Ghana data only
+  ═══════════════════════════════════════════ */
+  initAssistant(){
+    if(!this._aiHist){
+      this._aiHist=[];
+      this._aiSay('bot','Hello '+(this.user.name||'').split(' ')[0]+" — ask me about staff, attendance, leave, contracts or birthdays.\nTry one of the suggestions below.");
+    }
+    const chips=['How many staff do we have?','Who is on leave today?','Whose contract expires soon?','Birthdays this month','Who has not clocked in today?','Staff files still incomplete','Gender and unit breakdown','Pending leave requests'];
+    const c=$('ai-chips');
+    if(c)c.innerHTML=chips.map(t=>`<span class="ai-chip" onclick="APP.askAssistant('${t.replace(/'/g,"\\'")}')">${t}</span>`).join('');
+  }
+  clearAssistant(){this._aiHist=null;const c=$('ai-chat');if(c)c.innerHTML='';this.initAssistant();}
+  _aiSay(who,text){
+    const c=$('ai-chat');if(!c)return;
+    const d=document.createElement('div');
+    d.className='ai-msg '+(who==='you'?'ai-you':'ai-bot');
+    d.textContent=text;
+    c.appendChild(d);c.scrollTop=c.scrollHeight;
+  }
+  async askAssistant(preset){
+    const inp=$('ai-input');
+    const q=(preset||inp?.value||'').trim();
+    if(!q)return;
+    if(inp&&!preset)inp.value='';
+    this._aiSay('you',q);
+    const ans=await this._aiAnswer(q.toLowerCase());
+    this._aiSay('bot',ans);
+  }
+  async _aiAnswer(q){
+    const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin');
+    const todayISO=new Date().toISOString().slice(0,10);
+    const todayStr=fmtD(new Date().toISOString());
+    const has=(...w)=>w.some(x=>q.includes(x));
+    // headcount / gender / unit
+    if(has('how many staff','headcount','total staff','number of staff')||((has('gender','breakdown','unit','department'))&&!has('leave'))){
+      const m=list.filter(([i,s])=>(s.gender||'male')==='male').length;
+      const f=list.filter(([i,s])=>s.gender==='female').length;
+      const uc={};list.forEach(([i,s])=>{const u=(s.unit||'Unassigned').trim();uc[u]=(uc[u]||0)+1;});
+      return `We have ${list.length} staff — ${f} female, ${m} male.\n\nBy unit:\n`+
+        Object.entries(uc).sort((a,b)=>b[1]-a[1]).map(([u,n])=>`• ${u}: ${n}`).join('\n');
+    }
+    // on leave today
+    if(has('on leave','who is on leave','leave today')){
+      const on=list.filter(([i])=>leaveOnDate(this.leave,i,todayISO));
+      if(!on.length)return 'Nobody is on approved leave today.';
+      return `${on.length} on leave today:\n`+on.map(([i,s])=>{
+        const l=leaveOnDate(this.leave,i,todayISO);
+        return `• ${s.name} — ${l.type} (until ${fmtISO(l.endDate)})`;}).join('\n');
+    }
+    // pending leave
+    if(has('pending leave','awaiting approval','leave request')){
+      const p=this.leave.filter(l=>l.status==='Pending');
+      if(!p.length)return 'There are no pending leave requests.';
+      return `${p.length} pending request(s):\n`+p.map(l=>`• ${l.name} — ${l.type}, ${fmtISO(l.startDate)} to ${fmtISO(l.endDate)} (${l.days}d)`).join('\n');
+    }
+    // contracts
+    if(has('contract')){
+      const flagged=list.map(([i,s])=>({s,f:this._contractFlag(s.contractEnd)}))
+        .filter(x=>x.f.cls==='red'||x.f.cls==='amber')
+        .sort((a,b)=>(a.f.days??999)-(b.f.days??999));
+      if(!flagged.length)return 'No contracts are expiring within 60 days.';
+      return `${flagged.length} contract(s) need attention:\n`+flagged.map(x=>`• ${x.s.name} — ${x.f.label} (ends ${fmtISO(x.s.contractEnd)})`).join('\n');
+    }
+    // birthdays
+    if(has('birthday','birthdays','born')){
+      const files=await API._get('hr_staff_files','select=staff_id,dob')||[];
+      const mth=new Date().getMonth();
+      const cel=files.filter(f=>f.dob&&this.staff[f.staff_id]&&new Date(String(f.dob).slice(0,10)).getMonth()===mth)
+        .map(f=>({n:this.staff[f.staff_id].name,d:new Date(String(f.dob).slice(0,10))}))
+        .sort((a,b)=>a.d.getDate()-b.d.getDate());
+      if(!cel.length)return 'No birthdays on file for this month.';
+      return `Birthdays this month:\n`+cel.map(c=>`• ${c.n} — ${c.d.getDate()} ${c.d.toLocaleString('en',{month:'long'})}`).join('\n');
+    }
+    // not clocked in
+    if(has('not clocked','absent','who has not','clock in today','present today')){
+      const rec=this.records.filter(r=>fmtD(r.date||r.in)===todayStr);
+      const inSet=new Set(rec.map(r=>r.id));
+      const missing=list.filter(([i])=>!inSet.has(i)&&!leaveOnDate(this.leave,i,todayISO));
+      if(has('present today'))return `${inSet.size} of ${list.length} staff have clocked in today.`;
+      if(!missing.length)return 'Everyone has clocked in today (or is on approved leave).';
+      return `${missing.length} not yet clocked in today:\n`+missing.map(([i,s])=>`• ${s.name} (${s.unit||''})`).join('\n');
+    }
+    // staff files completeness
+    if(has('staff file','incomplete','file status','missing')){
+      const files=await API.getAllHRFiles();
+      const fm={};files.forEach(f=>fm[f.staff_id]=f);
+      const inc=list.filter(([i])=>{
+        const f=fm[i];if(!f)return true;
+        return [f.dob,f.phone,f.next_of_kin,f.ssnit_number].filter(v=>v&&String(v).trim()).length<4;});
+      if(!inc.length)return 'All staff files are complete. 🎉';
+      return `${inc.length} staff file(s) still incomplete:\n`+inc.map(([i,s])=>`• ${s.name}`).join('\n');
+    }
+    // person lookup
+    const match=list.find(([i,s])=>q.includes((s.name||'').toLowerCase().split(' ')[0])&&(s.name||'').length>2);
+    if(match){
+      const [id,s]=match;
+      const l=leaveOnDate(this.leave,id,todayISO);
+      const f=this._contractFlag(s.contractEnd);
+      const clockedIn=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===todayStr);
+      return `${s.name} (${id})\n• Unit: ${s.unit||'—'}\n• Role: ${roleLabel(s.role)}\n• Today: ${l?('on '+l.type):(clockedIn?'clocked in':'not clocked in')}\n• Contract: ${s.contractEnd?f.label:'no date on file'}`;
+    }
+    return "I can answer questions about:\n• Headcount, gender and unit breakdown\n• Who is on leave today\n• Pending leave requests\n• Contracts expiring soon\n• Birthdays this month\n• Who has not clocked in today\n• Incomplete staff files\n• A specific person (type their first name)\n\nTry rephrasing, or tap one of the suggestions.";
   }
 
   /* ═══════════════════════════════════════════
@@ -3334,7 +3502,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   async saveCase(){
     const id=$('cs-id').value||this._uid('CS');
     const r=await API._upsert('hr_cases',[{id,staff_id:$('cs-staff').value,case_type:$('cs-type').value,status:$('cs-status').value,opened_date:$('cs-opened').value||null,closed_date:$('cs-closed').value||null,summary:$('cs-summary').value.trim(),outcome:$('cs-outcome').value.trim()}]);
-    if(r){closeModal('case-modal');toast('Case saved ✓');this.renderCases('m-');}
+    if(r){this.audit('HR case saved','HR',this._sName($('cs-staff').value),$('cs-type').value+' · '+$('cs-status').value);closeModal('case-modal');toast('Case saved ✓');this.renderCases('m-');}
     else $('cs-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
   }
 
@@ -3626,7 +3794,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing calculated yet','err');
     const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
     const r=await API._upsert('payroll_runs',[{id:'RUN-'+month,month,data:JSON.stringify(this._payCalc),processed_at:new Date().toISOString()}]);
-    if(r)toast('Payroll run for '+month+' saved ✓');else toast('Save failed','err');
+    if(r){this.audit('Payroll run saved','Payroll',month,this._payCalc.length+' staff');toast('Payroll run for '+month+' saved ✓');}else toast('Save failed','err');
   }
   /* ── Payroll Phase B: bank advice, statutory returns, payslips ── */
   async _payWithBank(){
@@ -3764,6 +3932,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       this.staff[id].contractStart=start;
       this.staff[id].contractEnd=end;
       this._cacheS();
+      this.audit('Contract updated','HR',this.staff[id]?.name||id,(start||'—')+' → '+(end||'—'));
       closeModal('contract-modal');
       // Re-render whichever panel is active
       this.renderContracts('a-');this.renderContracts('m-');
@@ -3998,7 +4167,7 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        APP._applyPrivileges(id);APP._checkContractReminders();
+        APP._applyPrivileges(id);APP._checkContractReminders();setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},120);
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
