@@ -3107,6 +3107,142 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     setTimeout(()=>{if(ov.parentNode)ov.remove();},14000);
   }
 
+  /* ═══════════════════════════════════════════
+     RECRUITMENT — vacancies & candidate pipeline
+     Visible to HR and Country Leader
+  ═══════════════════════════════════════════ */
+  _rcStages(){return['Applied','Screening','Interview','Offer','Hired','Rejected'];}
+  _rcStageFlag(st){
+    const m={Applied:'none',Screening:'amber',Interview:'amber',Offer:'green',Hired:'green',Rejected:'red'};
+    return `<span class="c-flag ${m[st]||'none'}">${st}</span>`;
+  }
+  _rcVacFlag(st){
+    const m={Draft:'none',Open:'green',Interviewing:'amber',Offer:'amber',Filled:'green',Closed:'none'};
+    return `<span class="c-flag ${m[st]||'none'}">${st}</span>`;
+  }
+  _stars(n){n=+n||0;return n?`<span class="rc-star">${'★'.repeat(n)}${'☆'.repeat(5-n)}</span>`:'<span style="color:var(--text3);font-size:.72rem">—</span>';}
+  async renderRecruit(p){
+    const vb=$('m-rc-vac-body'),ab=$('m-rc-app-body');if(!vb)return;
+    vb.innerHTML='<tr><td colspan="8" style="color:var(--text3)">Loading…</td></tr>';
+    const vacs=await API._get('recruitment_vacancies','order=created_at.desc&limit=200')||[];
+    const apps=await API._get('recruitment_applicants','order=applied_date.desc.nullslast&limit=500')||[];
+    this._vacs=vacs;this._apps=apps;
+    const vmap={};vacs.forEach(v=>vmap[v.id]=v);
+    // vacancy filter dropdown
+    const fsel=$('m-rc-filter');
+    const cur=fsel?.value||'';
+    if(fsel)fsel.innerHTML='<option value="">All Vacancies</option>'+vacs.map(v=>`<option value="${v.id}" ${v.id===cur?'selected':''}>${v.position}</option>`).join('');
+    const fApps=cur?apps.filter(a=>a.vacancy_id===cur):apps;
+    // pipeline counters
+    const pipe=$('m-rc-pipe');
+    if(pipe){
+      const counts={};this._rcStages().forEach(st=>counts[st]=fApps.filter(a=>a.stage===st).length);
+      const colors={Applied:'var(--text2)',Screening:'#d97706',Interview:'#4338ca',Offer:'#0d9488',Hired:'#16a34a',Rejected:'#dc2626'};
+      pipe.innerHTML=this._rcStages().map(st=>`<div class="rc-stage"><div class="rc-n" style="color:${colors[st]}">${counts[st]}</div><div class="rc-l">${st}</div></div>`).join('')
+        +`<div class="rc-stage" style="background:transparent;border-style:dashed"><div class="rc-n">${vacs.filter(v=>v.status==='Open'||v.status==='Interviewing').length}</div><div class="rc-l">Open Roles</div></div>`;
+    }
+    // vacancies
+    vb.innerHTML=vacs.length?vacs.map(v=>{
+      const n=apps.filter(a=>a.vacancy_id===v.id).length;
+      const closing=v.closing_date?String(v.closing_date).slice(0,10):'—';
+      const late=v.closing_date&&String(v.closing_date).slice(0,10)<new Date().toISOString().slice(0,10)&&['Open','Interviewing'].includes(v.status);
+      return `<tr><td><strong>${v.position}</strong>${v.description?`<br><span style="font-size:.68rem;color:var(--text3)">${String(v.description).slice(0,60)}${v.description.length>60?'…':''}</span>`:''}</td>
+        <td style="font-size:.8rem">${v.unit||'—'}</td><td style="font-size:.78rem">${v.employ_type||'—'}</td>
+        <td>${v.openings||1}</td><td>${this._rcVacFlag(v.status)}</td>
+        <td style="font-size:.78rem">${closing}${late?' <span class="c-flag red">past</span>':''}</td>
+        <td><strong>${n}</strong></td>
+        <td><button class="bsm bsm-navy" onclick="APP.openVacancyModal('${v.id}')">✏</button></td></tr>`;
+    }).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">🧑‍💼</div>No vacancies yet — click ＋ New Vacancy</div></td></tr>';
+    // candidates
+    if(ab)ab.innerHTML=fApps.length?fApps.map(a=>{
+      const v=vmap[a.vacancy_id];
+      return `<tr><td><strong>${a.name}</strong></td>
+        <td style="font-size:.8rem">${v?v.position:'—'}</td>
+        <td style="font-size:.74rem">${a.email||''}${a.email&&a.phone?'<br>':''}${a.phone||''}</td>
+        <td>${this._rcStageFlag(a.stage)}</td><td>${this._stars(a.rating)}</td>
+        <td>${a.cv_url?`<a href="${a.cv_url}" target="_blank" style="color:var(--teal)">📎 CV</a>`:'—'}</td>
+        <td style="font-size:.76rem">${a.applied_date?String(a.applied_date).slice(0,10):'—'}</td>
+        <td><button class="bsm bsm-navy" onclick="APP.openApplicantModal('${a.id}')">✏</button></td></tr>`;
+    }).join(''):'<tr><td colspan="8"><div class="empty"><div class="empty-ico">👤</div>No candidates yet</div></td></tr>';
+  }
+  openVacancyModal(id){
+    const v=id?(this._vacs||[]).find(x=>x.id===id):null;
+    $('vc-id').value=v?.id||'';
+    $('vc-position').value=v?.position||'';
+    $('vc-unit').value=v?.unit||'';
+    $('vc-type').value=v?.employ_type||'Full-time';
+    $('vc-openings').value=v?.openings||1;
+    $('vc-status').value=v?.status||'Open';
+    $('vc-posted').value=v?.posted_date?String(v.posted_date).slice(0,10):new Date().toISOString().slice(0,10);
+    $('vc-closing').value=v?.closing_date?String(v.closing_date).slice(0,10):'';
+    $('vc-desc').value=v?.description||'';
+    const mgrs=Object.entries(this.staff).filter(([i,s])=>s.role==='manager'||s.role==='country_leader')
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    $('vc-manager').innerHTML='<option value="">— Not set —</option>'+mgrs.map(([i,s])=>`<option value="${i}" ${v?.hiring_manager===i?'selected':''}>${s.name}</option>`).join('');
+    $('vc-msg').textContent='';
+    $('vacancy-modal').classList.add('open');
+  }
+  async saveVacancy(){
+    const pos=$('vc-position').value.trim();
+    if(!pos)return $('vc-msg').innerHTML='<span style="color:var(--red)">Position title is required.</span>';
+    const id=$('vc-id').value||this._uid('VAC');
+    $('vc-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('recruitment_vacancies',[{id,position:pos,unit:$('vc-unit').value.trim(),
+      employ_type:$('vc-type').value,openings:+$('vc-openings').value||1,status:$('vc-status').value,
+      hiring_manager:$('vc-manager').value,posted_date:$('vc-posted').value||null,
+      closing_date:$('vc-closing').value||null,description:$('vc-desc').value.trim(),created_by:this.user.name}]);
+    if(r){closeModal('vacancy-modal');toast('Vacancy saved ✓');this.renderRecruit('m-');}
+    else $('vc-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+  openApplicantModal(id){
+    const a=id?(this._apps||[]).find(x=>x.id===id):null;
+    const vacs=this._vacs||[];
+    if(!vacs.length&&!a)return toast('Create a vacancy first','err');
+    $('ap-id').value=a?.id||'';
+    $('ap-vacancy').innerHTML=vacs.map(v=>`<option value="${v.id}" ${a?.vacancy_id===v.id?'selected':''}>${v.position} (${v.unit||''})</option>`).join('');
+    $('ap-name').value=a?.name||'';
+    $('ap-email').value=a?.email||'';
+    $('ap-phone').value=a?.phone||'';
+    $('ap-stage').value=a?.stage||'Applied';
+    $('ap-rating').value=a?.rating||0;
+    $('ap-notes').value=a?.notes||'';
+    $('ap-date').value=a?.applied_date?String(a.applied_date).slice(0,10):new Date().toISOString().slice(0,10);
+    $('ap-cv-url').value=a?.cv_url||'';
+    $('ap-cv-shown').innerHTML=a?.cv_url?`<span class="hr-doc-chip">📎 <a href="${a.cv_url}" target="_blank">View CV</a></span>`:'<span style="font-size:.74rem;color:var(--text3)">No CV uploaded</span>';
+    $('ap-msg').textContent='';
+    $('applicant-modal').classList.add('open');
+  }
+  async uploadCV(){
+    const inp=$('ap-cv-file');const msg=$('ap-msg');
+    if(!inp?.files?.length)return toast('Choose a file first','err');
+    const file=inp.files[0];
+    if(file.size>5*1024*1024)return toast('File too large (max 5MB)','err');
+    msg.innerHTML='<span style="color:var(--teal)">⏳ Uploading CV…</span>';
+    try{
+      const b64=await this._fileToBase64(file);
+      const nm=($('ap-name').value.trim()||'candidate').replace(/[^a-z0-9]/gi,'_');
+      const r=await API.gasPost({action:'uploadHRDoc',staffId:'RECRUIT_'+nm,fileName:file.name,fileData:b64,mimeType:file.type});
+      if(r&&r.success&&r.fileUrl){
+        $('ap-cv-url').value=r.fileUrl;
+        $('ap-cv-shown').innerHTML=`<span class="hr-doc-chip">📎 <a href="${r.fileUrl}" target="_blank">View CV</a></span>`;
+        inp.value='';
+        msg.innerHTML='<span style="color:var(--green)">✓ CV uploaded — click Save to confirm.</span>';
+      }else msg.innerHTML='<span style="color:var(--red)">Upload failed: '+((r&&r.error)||'no response')+'</span>';
+    }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+  }
+  async saveApplicant(){
+    const nm=$('ap-name').value.trim();
+    if(!nm)return $('ap-msg').innerHTML='<span style="color:var(--red)">Candidate name is required.</span>';
+    const id=$('ap-id').value||this._uid('APP');
+    $('ap-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('recruitment_applicants',[{id,vacancy_id:$('ap-vacancy').value,name:nm,
+      email:$('ap-email').value.trim(),phone:$('ap-phone').value.trim(),stage:$('ap-stage').value,
+      rating:+$('ap-rating').value||0,cv_url:$('ap-cv-url').value,notes:$('ap-notes').value.trim(),
+      applied_date:$('ap-date').value||null,updated_at:new Date().toISOString()}]);
+    if(r){closeModal('applicant-modal');toast('Candidate saved ✓');this.renderRecruit('m-');}
+    else $('ap-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+
   /* ── Performance ── */
   async renderPerf(p){
     const body=$(p+'perf-body');if(!body)return;
@@ -3202,13 +3338,112 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     else $('cs-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
   }
 
-  /* ── Org Chart ── */
-  renderOrgChart(p){
-    const el=$(p+'org-tree');if(!el)return;
-    const kids=id=>Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&(s.supervisor||'')===id).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-    const node=([i,s])=>`<div><span class="org-node"><strong>${s.name}</strong> <span style="color:var(--text3);font-size:.7rem">${s.unit||''}</span></span>${kids(i).length?`<div class="org-lvl">${kids(i).map(node).join('')}</div>`:''}</div>`;
-    const roots=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&!(s.supervisor||'').trim());
-    el.innerHTML=roots.length?roots.map(node).join(''):'<div class="empty"><div class="empty-ico">🌳</div>No staff found</div>';
+  /* ── Org Chart (editable organogram) ── */
+  async renderOrgChart(p){
+    const el=$((p||'m-')+'org-tree');if(!el)return;
+    el.innerHTML='<div style="color:var(--text3);font-size:.8rem">Loading…</div>';
+    const rows=await API._get('org_chart','select=*')||[];
+    const oc={};rows.forEach(r=>oc[r.staff_id]=r);
+    this._orgOverrides=oc;
+    const files=await API._get('hr_staff_files','select=staff_id,photo_url')||[];
+    const ph={};files.forEach(f=>{if(f.photo_url)ph[f.staff_id]=this._drivePhoto(f.photo_url);});
+    const people=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin');
+    const mgrOf=id=>{
+      const o=oc[id];
+      if(o&&o.reports_to!==undefined&&o.reports_to!==null&&o.reports_to!=='')return o.reports_to;
+      if(o&&o.reports_to==='')return '';
+      return (this.staff[id]?.supervisor||'').trim();
+    };
+    const orderOf=id=>(oc[id]?.sort_order??100);
+    const titleOf=id=>(oc[id]?.title||'').trim()||(this.staff[id]?.unit||'');
+    const kids=parent=>people.filter(([i])=>{
+      const m=mgrOf(i);
+      return parent===''?(!m||!this.staff[m]||m===i):m===parent;
+    }).sort((a,b)=>orderOf(a[0])-orderOf(b[0])||a[1].name.localeCompare(b[1].name));
+    const isHR=this.user.id===HR_MANAGER_ID||this.user.role==='admin';
+    const seen=new Set();
+    const node=([id,st],lvl)=>{
+      if(seen.has(id))return'';           // guard against circular reporting
+      seen.add(id);
+      const av=ph[id]
+        ? `<img class="oc-av" src="${ph[id]}" alt="">`
+        : `<div class="oc-av" style="background:${st.color||'#2D3592'}">${(st.name||'?')[0]}</div>`;
+      const ch=kids(id);
+      return `<li class="oc-lvl-${lvl}"><div class="oc-node">
+          ${isHR?`<button class="oc-edit" title="Edit position" onclick="APP.openOrgModal('${id}')">✏</button>`:''}
+          ${av}
+          <div class="oc-name">${st.name}</div>
+          <div class="oc-title">${titleOf(id)}</div>
+          <div class="oc-unit">${id}</div>
+        </div>${ch.length?`<ul>${ch.map(c=>node(c,lvl+1)).join('')}</ul>`:''}</li>`;
+    };
+    const roots=kids('');
+    el.innerHTML=roots.length
+      ? `<div class="oc-tree"><ul>${roots.map(r=>node(r,0)).join('')}</ul></div>`
+      : '<div class="empty"><div class="empty-ico">🌳</div>No staff found</div>';
+    const missed=people.filter(([i])=>!seen.has(i));
+    if(missed.length)el.innerHTML+=`<div style="margin-top:1rem;font-size:.76rem;color:var(--text3)">⚠ Not shown (circular reporting line): ${missed.map(m=>m[1].name).join(', ')} — use ✏ to fix.</div>`;
+  }
+  orgZoom(dir){
+    this._orgScale=dir===0?1:Math.min(1.6,Math.max(.5,(this._orgScale||1)+dir*0.12));
+    const t=document.querySelector('#m-org-tree .oc-tree');
+    if(t)t.style.transform='scale('+this._orgScale+')';
+  }
+  openOrgModal(id){
+    const st=this.staff[id];if(!st)return;
+    const o=(this._orgOverrides||{})[id]||{};
+    $('og-id').value=id;
+    $('og-staff-name').textContent=st.name+' ('+id+')';
+    const cur=o.reports_to!==undefined&&o.reports_to!==null?o.reports_to:(st.supervisor||'');
+    const opts=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&i!==id)
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name))
+      .map(([i,s])=>`<option value="${i}" ${i===cur?'selected':''}>${s.name} (${s.unit||''})</option>`).join('');
+    $('og-reports').innerHTML=`<option value="" ${!cur?'selected':''}>— Top level (no manager) —</option>`+opts;
+    $('og-title').value=o.title||st.unit||'';
+    $('og-order').value=o.sort_order??100;
+    $('og-msg').textContent='';
+    $('org-modal').classList.add('open');
+  }
+  async saveOrgNode(){
+    const id=$('og-id').value;
+    const reports=$('og-reports').value;
+    if(reports===id)return $('og-msg').innerHTML='<span style="color:var(--red)">Someone cannot report to themselves.</span>';
+    // walk up the chain to prevent a loop
+    let cur=reports,hops=0;
+    const oc=this._orgOverrides||{};
+    while(cur&&hops<50){
+      if(cur===id)return $('og-msg').innerHTML='<span style="color:var(--red)">That creates a circular reporting line.</span>';
+      const o=oc[cur];
+      cur=(o&&o.reports_to!==undefined&&o.reports_to!==null)?o.reports_to:(this.staff[cur]?.supervisor||'');
+      hops++;
+    }
+    $('og-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('org_chart',[{staff_id:id,reports_to:reports,title:$('og-title').value.trim(),
+      sort_order:parseInt($('og-order').value)||100,updated_at:new Date().toISOString()}]);
+    if(r){closeModal('org-modal');toast('Organogram updated ✓');this.renderOrgChart('m-');}
+    else $('og-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+  openOrgUnassigned(){
+    const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin')
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    if(!list.length)return;
+    this.openOrgModal(list[0][0]);
+    toast('Pick the staff member from the chart (✏) or adjust this one','info');
+  }
+  printOrgChart(){
+    const tree=$('m-org-tree');if(!tree)return toast('Nothing to print','err');
+    const css=[...document.querySelectorAll('style,link[rel=stylesheet]')].map(n=>n.outerHTML).join('');
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><title>Organogram — THP-Ghana</title>${css}
+      <style>body{background:#fff;padding:12mm;font-family:'Segoe UI',Arial,sans-serif}
+      h1{font-size:15px;color:#2D3592;border-bottom:3px solid #2D3592;padding-bottom:8px}
+      .meta{font-size:9px;color:#64748b;margin-bottom:14px}</style></head>
+      <body data-theme="light"><h1>The Hunger Project — Ghana · Organogram</h1>
+      <div class="meta">Generated ${new Date().toLocaleString('en-GB')} · by ${this.user.name}</div>
+      <div class="oc-wrap">${tree.innerHTML}</div>
+      <div class="no-print" style="margin-top:16px"><button onclick="window.print()" style="padding:8px 20px;background:#2D3592;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">🖨 Print</button></div>
+      </body></html>`);
+    w.document.close();
   }
 
   /* ── Payroll (Finance: Ernest + Emmanuel; settings-driven) ── */
@@ -3265,7 +3500,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       if(!ps||!+ps.basic)return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td colspan="8" style="color:var(--text3);font-size:.78rem">No salary set</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏ Setup</button></td></tr>`;
       const c=this._calcPay(ps,S);
       Object.keys(tot).forEach(k=>tot[k]+=c[k]);
-      this._payCalc.push({id,name:s.name,unit:s.unit,...c,basic:+ps.basic});
+      let alloc=[];try{alloc=JSON.parse(ps.cost_allocation||'[]');}catch(e){}
+      this._payCalc.push({id,name:s.name,unit:s.unit,email:s.email||'',...c,basic:+ps.basic,alloc});
       return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td>${this._ghs(ps.basic)}</td><td style="font-size:.72rem">${c.allowStr}</td><td>${this._ghs(c.gross)}</td><td>${this._ghs(c.ssnitEmp)}</td><td>${this._ghs(c.tier3)}</td><td>${this._ghs(c.paye)}</td><td><strong>${this._ghs(c.net)}</strong></td><td>${this._ghs(c.cost)}</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏</button></td></tr>`;
     }).join('');
     const sm=$(p+'pay-summary');
@@ -3287,6 +3523,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('pm-bank').value='';$('pm-account').value='';
     API.getHRFile(id).then(hf=>{if($('pm-id').value===id){$('pm-bank').value=hf?.bank_name||'';$('pm-account').value=hf?.bank_account||'';}});
     $('pm-allow').value=allow.map(a=>`${a.n} : ${a.a} : ${a.tax?'t':'n'}`).join('\n');
+    let alloc=[];try{alloc=JSON.parse(ps?.cost_allocation||'[]');}catch(e){}
+    $('pm-alloc').value=alloc.map(x=>`${x.project} : ${x.pct}`).join('\n');
     $('pm-msg').textContent='';
     $('pay-modal').classList.add('open');
   }
@@ -3296,18 +3534,152 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const parts=l.split(':').map(x=>x.trim());
       return{n:parts[0]||'Allowance',a:+parts[1]||0,tax:(parts[2]||'t').toLowerCase()!=='n'};
     });
-    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,updated_at:new Date().toISOString()}]);
+    const alloc=$('pm-alloc').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+      const q=l.split(':').map(x=>x.trim());return{project:q[0]||'Unallocated',pct:+q[1]||0};});
+    const totPct=alloc.reduce((t,x)=>t+x.pct,0);
+    if(alloc.length&&Math.abs(totPct-100)>0.01)return $('pm-msg').innerHTML='<span style="color:var(--red)">Allocation must total 100% (currently '+totPct+'%).</span>';
+    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,cost_allocation:JSON.stringify(alloc),updated_at:new Date().toISOString()}]);
     if(r){
       await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:$('pm-account').value.trim()}]);
       closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
     }
     else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
   }
+  /* ── Phase B: bank advice, statutory returns, allocation, payslips ── */
+  _payGuard(){
+    if(!this._payCalc||!this._payCalc.length){toast('Recalculate the payroll first','err');return false;}
+    return true;
+  }
+  async exportBankAdvice(p){
+    if(!this._payGuard())return;
+    const month=$(p+'pay-month').value||'';
+    const files=await API._get('hr_staff_files','select=staff_id,bank_name,bank_account')||[];
+    const bk={};files.forEach(f=>bk[f.staff_id]=f);
+    let csv='THP-GHANA BANK ADVICE,'+month+'\nStaff ID,Name,Bank,Account Number,Net Pay (GHS)\n';
+    let tot=0,missing=[];
+    this._payCalc.forEach(r=>{
+      const b=bk[r.id]||{};
+      if(!b.bank_account)missing.push(r.name);
+      tot+=r.net;
+      csv+=`"${r.id}","${r.name}","${b.bank_name||''}","${b.bank_account||''}",${r.net.toFixed(2)}\n`;
+    });
+    csv+=`,,,TOTAL,${tot.toFixed(2)}\n`;
+    this._dl(csv,'THP_Bank_Advice_'+month+'.csv','text/csv');
+    if(missing.length)toast('No bank account on file for: '+missing.join(', '),'info');
+  }
+  async exportStatutory(p){
+    if(!this._payGuard())return;
+    const S=await this._loadPaySettings();
+    const month=$(p+'pay-month').value||'';
+    let csv='THP-GHANA STATUTORY RETURNS,'+month+'\n';
+    csv+='Staff ID,Name,Basic (GHS),SSNIT Employee 5.5%,SSNIT Employer 13%,Tier 1 (13.5%),Tier 2 (5%),Tier 3 (voluntary),PAYE (GHS)\n';
+    let t={emp:0,empr:0,t1:0,t2:0,t3:0,paye:0};
+    this._payCalc.forEach(r=>{
+      const capped=Math.min(r.basic,S.ssnitCeilingMonthly);
+      const empr=S.ssnitEmployerPct/100*capped;
+      const total=r.ssnitEmp+empr;          // 18.5% combined
+      const t1=total*(13.5/18.5), t2=total*(5/18.5);
+      t.emp+=r.ssnitEmp;t.empr+=empr;t.t1+=t1;t.t2+=t2;t.t3+=r.tier3;t.paye+=r.paye;
+      csv+=`"${r.id}","${r.name}",${r.basic.toFixed(2)},${r.ssnitEmp.toFixed(2)},${empr.toFixed(2)},${t1.toFixed(2)},${t2.toFixed(2)},${r.tier3.toFixed(2)},${r.paye.toFixed(2)}\n`;
+    });
+    csv+=`,TOTALS,,${t.emp.toFixed(2)},${t.empr.toFixed(2)},${t.t1.toFixed(2)},${t.t2.toFixed(2)},${t.t3.toFixed(2)},${t.paye.toFixed(2)}\n`;
+    csv+='\nNOTE,"Tier 1 to SSNIT; Tier 2 to a licensed private trustee; PAYE to GRA. Confirm current rates before filing."\n';
+    this._dl(csv,'THP_Statutory_Returns_'+month+'.csv','text/csv');
+  }
+  exportAllocation(p){
+    if(!this._payGuard())return;
+    const month=$(p+'pay-month').value||'';
+    const proj={};
+    let csv='THP-GHANA PAYROLL COST ALLOCATION,'+month+'\nStaff ID,Name,Project/Grant,Share %,Allocated Cost (GHS)\n';
+    let unalloc=0;
+    this._payCalc.forEach(r=>{
+      const list=(r.alloc&&r.alloc.length)?r.alloc:[{project:'Unallocated',pct:100}];
+      if(!r.alloc||!r.alloc.length)unalloc++;
+      list.forEach(a=>{
+        const amt=r.cost*a.pct/100;
+        proj[a.project]=(proj[a.project]||0)+amt;
+        csv+=`"${r.id}","${r.name}","${a.project}",${a.pct},${amt.toFixed(2)}\n`;
+      });
+    });
+    csv+='\nPROJECT/GRANT,TOTAL EMPLOYER COST (GHS)\n';
+    Object.entries(proj).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{csv+=`"${k}",${v.toFixed(2)}\n`;});
+    this._dl(csv,'THP_Cost_Allocation_'+month+'.csv','text/csv');
+    if(unalloc)toast(unalloc+' staff have no allocation set — shown as "Unallocated"','info');
+  }
+  async emailPayslips(p){
+    if(!this._payGuard())return;
+    const month=$(p+'pay-month').value||'';
+    const withEmail=this._payCalc.filter(r=>r.email);
+    const without=this._payCalc.filter(r=>!r.email);
+    if(!withEmail.length)return toast('No staff have email addresses on file','err');
+    if(!confirm('Send '+withEmail.length+' payslip(s) for '+month+'?\n\nEach person receives only their own payslip.'+(without.length?'\n\nNo email on file for: '+without.map(r=>r.name).join(', '):'')))return;
+    showLoader('Sending payslips…');
+    const payload=withEmail.map(r=>({name:r.name,id:r.id,email:r.email,unit:r.unit||'',month,
+      basic:r.basic.toFixed(2),allowances:(r.taxA+r.nonTax).toFixed(2),gross:r.gross.toFixed(2),
+      ssnit:r.ssnitEmp.toFixed(2),tier3:r.tier3.toFixed(2),paye:r.paye.toFixed(2),net:r.net.toFixed(2)}));
+    const res=await API.gasPost({action:'sendPayslips',month,slips:payload});
+    hideLoader();
+    if(res&&res.success)toast('Payslips sent: '+res.sent+(res.failed?(' · failed: '+res.failed):'')+' ✓');
+    else toast('Payslip sending failed'+(res&&res.error?': '+res.error:' — check the Apps Script deployment'),'err');
+  }
   async savePayrollRun(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing calculated yet','err');
     const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
     const r=await API._upsert('payroll_runs',[{id:'RUN-'+month,month,data:JSON.stringify(this._payCalc),processed_at:new Date().toISOString()}]);
     if(r)toast('Payroll run for '+month+' saved ✓');else toast('Save failed','err');
+  }
+  /* ── Payroll Phase B: bank advice, statutory returns, payslips ── */
+  async _payWithBank(){
+    const files=await API._get('hr_staff_files','select=staff_id,bank_name,bank_account')||[];
+    const bm={};files.forEach(f=>bm[f.staff_id]=f);
+    return (this._payCalc||[]).map(r=>({...r,bank:bm[r.id]?.bank_name||'',account:bm[r.id]?.bank_account||''}));
+  }
+  async exportBankAdvice(p){
+    if(!this._payCalc?.length)return toast('Run the payroll first','err');
+    const month=$(p+'pay-month').value||'';
+    const rows=await this._payWithBank();
+    const missing=rows.filter(r=>!r.bank||!r.account);
+    let csv='Staff ID,Name,Bank,Account Number,Net Pay (GHS)\n';
+    rows.forEach(r=>{csv+=`"${r.id}","${r.name}","${r.bank}","${r.account}",${r.net.toFixed(2)}\n`;});
+    csv+=`,,,TOTAL,${rows.reduce((t,r)=>t+r.net,0).toFixed(2)}\n`;
+    this._dl(csv,'THP_Bank_Advice_'+month+'.csv','text/csv');
+    if(missing.length)toast('⚠ Missing bank details for '+missing.length+' staff — add them in Pay Setup','info');
+  }
+  exportStatutory(p){
+    if(!this._payCalc?.length)return toast('Run the payroll first','err');
+    const month=$(p+'pay-month').value||'';
+    const S=this._payS||this._payDefaults();
+    let csv='THP-GHANA STATUTORY RETURNS,'+month+'\n\n';
+    csv+='PAYE (GRA)\nStaff ID,Name,Taxable Basis (Gross),PAYE Deducted\n';
+    let tPaye=0;this._payCalc.forEach(r=>{tPaye+=r.paye;csv+=`"${r.id}","${r.name}",${r.gross.toFixed(2)},${r.paye.toFixed(2)}\n`;});
+    csv+=`,,TOTAL PAYE,${tPaye.toFixed(2)}\n\n`;
+    csv+='SSNIT\nStaff ID,Name,Basic,Employee 5.5%,Employer 13%,Total,Tier 3\n';
+    let tE=0,tR=0,t3=0;
+    this._payCalc.forEach(r=>{
+      const capped=Math.min(r.basic,S.ssnitCeilingMonthly);
+      const empr=S.ssnitEmployerPct/100*capped;
+      tE+=r.ssnitEmp;tR+=empr;t3+=r.tier3;
+      csv+=`"${r.id}","${r.name}",${r.basic.toFixed(2)},${r.ssnitEmp.toFixed(2)},${empr.toFixed(2)},${(r.ssnitEmp+empr).toFixed(2)},${r.tier3.toFixed(2)}\n`;
+    });
+    csv+=`,,TOTALS,${tE.toFixed(2)},${tR.toFixed(2)},${(tE+tR).toFixed(2)},${t3.toFixed(2)}\n`;
+    this._dl(csv,'THP_Statutory_Returns_'+month+'.csv','text/csv');
+  }
+  async emailPayslips(p){
+    if(!this._payCalc?.length)return toast('Run the payroll first','err');
+    const month=$(p+'pay-month').value||'';
+    const withEmail=this._payCalc.filter(r=>this.staff[r.id]?.email);
+    if(!withEmail.length)return toast('No staff email addresses on file','err');
+    if(!confirm('Email '+withEmail.length+' payslip(s) for '+month+'?\n\nEach staff member receives only their own payslip.'))return;
+    const S=this._payS||this._payDefaults();
+    const payload=withEmail.map(r=>({
+      name:r.name,email:this.staff[r.id].email,id:r.id,unit:r.unit||'',
+      basic:r.basic.toFixed(2),allow:(r.taxA+r.nonTax).toFixed(2),gross:r.gross.toFixed(2),
+      ssnit:r.ssnitEmp.toFixed(2),tier3:r.tier3.toFixed(2),paye:r.paye.toFixed(2),net:r.net.toFixed(2)
+    }));
+    toast('Sending payslips…','info');
+    const res=await API.gasPost({action:'sendPayslips',month,payslips:payload});
+    if(res&&res.success)toast('✓ '+res.sent+' payslip(s) emailed');
+    else toast('Payslip email failed'+(res?.error?': '+res.error:''),'err');
   }
   exportPayrollCSV(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing to export','err');
