@@ -302,6 +302,10 @@
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('st-')">🔄 Recalculate</button>
             <button class="bsm bsm-navy" onclick="APP.savePayrollRun('st-')">💾 Save Run</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('st-')">📊 CSV</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('st-')">🏦 Bank Advice</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('st-')">🏛 Statutory</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('st-')">📌 Allocation</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="st-pay-summary" class="contract-summary"></div>
@@ -380,6 +384,7 @@
       <button class="nav-item hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="ico">📣</span>Announcements</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="ico">📁</span>File Manager</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-performance','sb-mgr',event);APP.renderPerf('m-')"><span class="ico">📊</span>Performance</button>
+      <button class="nav-item hr-tab" onclick="showPanel('m-recruit','sb-mgr',event);APP.renderRecruit('m-')"><span class="ico">🧑‍💼</span>Recruitment</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-training','sb-mgr',event);APP.renderTraining('m-')"><span class="ico">🎓</span>Training</button>
       <button class="nav-item cases-tab" id="nav-mgr-cases" onclick="showPanel('m-cases','sb-mgr',event);APP.renderCases('m-')"><span class="ico">⚖</span>Lifecycle &amp; Cases</button>
       <button class="nav-item hr-tab" onclick="showPanel('m-orgchart','sb-mgr',event);APP.renderOrgChart('m-')"><span class="ico">🌳</span>Org Chart</button>
@@ -656,6 +661,27 @@
         <div class="tcard"><div class="tcard-hdr"><h4>Reviews</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-performance','Performance Reviews')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openPerfModal()">＋ New Review</button></div></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Rating</th><th>Reviewer</th><th>Date</th><th>Comments</th><th style="width:70px"></th></tr></thead><tbody id="m-perf-body"></tbody></table></div></div>
       </div>
+      <div id="m-recruit" class="panel">
+        <div class="pg-hdr"><h2>🧑‍💼 Recruitment</h2><p>Vacancies and candidate pipeline</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Pipeline</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <select class="fi" id="m-rc-filter" onchange="APP.renderRecruit('m-')" style="width:190px"><option value="">All Vacancies</option></select>
+              <button class="bsm bsm-teal" onclick="APP.renderRecruit('m-')">🔄 Refresh</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-recruit','Recruitment')">🖨 Print</button>
+            </div>
+          </div>
+          <div id="m-rc-pipe" class="rc-pipe"></div>
+        </div>
+        <div class="tcard" style="margin-top:1rem">
+          <div class="tcard-hdr"><h4>Vacancies</h4><div class="t-btns"><button class="btn-add" style="margin:0" onclick="APP.openVacancyModal()">＋ New Vacancy</button></div></div>
+          <div class="scr"><table><thead><tr><th>Position</th><th>Unit</th><th>Type</th><th>Openings</th><th>Status</th><th>Closing</th><th>Applicants</th><th style="width:70px"></th></tr></thead><tbody id="m-rc-vac-body"></tbody></table></div>
+        </div>
+        <div class="tcard" style="margin-top:1rem">
+          <div class="tcard-hdr"><h4>Candidates</h4><div class="t-btns"><button class="btn-add" style="margin:0" onclick="APP.openApplicantModal()">＋ Add Candidate</button></div></div>
+          <div class="scr"><table><thead><tr><th>Candidate</th><th>Applied For</th><th>Contact</th><th>Stage</th><th>Rating</th><th>CV</th><th>Applied</th><th style="width:70px"></th></tr></thead><tbody id="m-rc-app-body"></tbody></table></div>
+        </div>
+      </div>
       <div id="m-training" class="panel">
         <div class="pg-hdr"><h2>🎓 Training</h2><p>Courses, certificates and expiry tracking</p></div>
         <div class="tcard"><div class="tcard-hdr"><h4>Records</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-training','Training Records')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openTrainModal()">＋ New Record</button></div></div>
@@ -667,8 +693,23 @@
           <div class="scr"><table><thead><tr><th>Staff</th><th>Type</th><th>Opened</th><th>Status</th><th>Summary</th><th>Outcome</th><th style="width:70px"></th></tr></thead><tbody id="m-case-body"></tbody></table></div></div>
       </div>
       <div id="m-orgchart" class="panel">
-        <div class="pg-hdr"><h2>🌳 Org Chart</h2><p>Reporting lines from the staff directory</p></div>
-        <div class="tcard" style="padding:1rem 1.3rem"><div id="m-org-tree"></div></div>
+        <div class="pg-hdr"><h2>🌳 Org Chart</h2><p>Organogram — reporting lines, editable by HR</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Organogram</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <button class="bsm bsm-teal" onclick="APP.renderOrgChart('m-')">🔄 Refresh</button>
+              <button class="bsm bsm-navy" onclick="APP.openOrgUnassigned()">➕ Place Staff</button>
+              <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.orgZoom(-1)">➖</button>
+              <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.orgZoom(0)">100%</button>
+              <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.orgZoom(1)">➕</button>
+              <button class="bsm bsm-gold" onclick="APP.printOrgChart()">🖨 Print</button>
+            </div>
+          </div>
+          <div class="oc-wrap"><div id="m-org-tree"></div></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Note:</strong> The chart is built from each person's line manager. Hover a box and click ✏ to set their manager, position title and position order. Anyone without a manager appears at the top level.
+        </div>
       </div>
       <div id="m-payroll" class="panel">
         <div class="pg-hdr"><h2>₵ Payroll</h2><p>Ghana statutory engine — PAYE, SSNIT Tiers 1/2/3. Figures are settings-driven; confirm current GRA/SSNIT rates before processing.</p></div>
@@ -678,6 +719,10 @@
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('m-')">🔄 Recalculate</button>
             <button class="bsm bsm-navy" onclick="APP.savePayrollRun('m-')">💾 Save Run</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('m-')">📊 CSV</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('m-')">🏦 Bank Advice</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('m-')">🏛 Statutory</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('m-')">📌 Allocation</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="m-pay-summary" class="contract-summary"></div>
@@ -1155,6 +1200,59 @@
   </div>
 </div>
 
+<!-- Vacancy modal -->
+<div class="overlay" id="vacancy-modal">
+  <div class="modal"><h3>🧑‍💼 Vacancy</h3>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Position Title</label><input type="text" id="vc-position"></div>
+      <div class="field"><label>Unit</label><input type="text" id="vc-unit"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Employment Type</label><select id="vc-type" class="fi"><option>Full-time</option><option>Contract</option><option>Part-time</option><option>Internship</option><option>National Service</option><option>Consultancy</option></select></div>
+      <div class="field"><label>Openings</label><input type="number" id="vc-openings" value="1" min="1"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Status</label><select id="vc-status" class="fi"><option>Draft</option><option selected>Open</option><option>Interviewing</option><option>Offer</option><option>Filled</option><option>Closed</option></select></div>
+      <div class="field"><label>Hiring Manager</label><select id="vc-manager" class="fi"></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Posted</label><input type="date" id="vc-posted"></div>
+      <div class="field"><label>Closing</label><input type="date" id="vc-closing"></div>
+    </div>
+    <div class="field"><label>Description / Requirements</label><textarea id="vc-desc" rows="3"></textarea></div>
+    <input type="hidden" id="vc-id"><div id="vc-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('vacancy-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveVacancy()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Candidate modal -->
+<div class="overlay" id="applicant-modal">
+  <div class="modal"><h3>👤 Candidate</h3>
+    <div class="field"><label>Applied For</label><select id="ap-vacancy" class="fi"></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Full Name</label><input type="text" id="ap-name"></div>
+      <div class="field"><label>Applied Date</label><input type="date" id="ap-date"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Email</label><input type="email" id="ap-email"></div>
+      <div class="field"><label>Phone</label><input type="text" id="ap-phone"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Stage</label><select id="ap-stage" class="fi"><option>Applied</option><option>Screening</option><option>Interview</option><option>Offer</option><option>Hired</option><option>Rejected</option></select></div>
+      <div class="field"><label>Rating</label><select id="ap-rating" class="fi"><option value="0">Not rated</option><option value="1">★</option><option value="2">★★</option><option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★</option></select></div>
+    </div>
+    <div class="field"><label>CV / Documents</label>
+      <div id="ap-cv-shown" style="margin-bottom:.35rem"></div>
+      <input type="file" id="ap-cv-file" accept=".pdf,.doc,.docx" style="font-size:.78rem">
+      <button class="bsm bsm-teal" style="margin-top:.3rem" onclick="APP.uploadCV()">📤 Upload CV</button>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="ap-notes" rows="2"></textarea></div>
+    <input type="hidden" id="ap-id"><input type="hidden" id="ap-cv-url">
+    <div id="ap-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('applicant-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveApplicant()">💾 Save</button></div>
+  </div>
+</div>
+
 <!-- Performance review modal -->
 <div class="overlay" id="perf-modal">
   <div class="modal"><h3>📊 Performance Review</h3>
@@ -1223,8 +1321,25 @@
       <div class="field"><label>Bank Account</label><input type="text" id="pm-account"></div>
     </div>
     <div class="field"><label>Allowances — one per line: Name : Amount : t (taxable) or n</label><textarea id="pm-allow" rows="3" placeholder="Transport : 400 : t&#10;Data bundle : 150 : n"></textarea></div>
+    <div class="field"><label>Grant / Project Allocation — one per line: Project : %</label><textarea id="pm-alloc" rows="2" placeholder="Grant A : 60&#10;Core : 40"></textarea></div>
     <input type="hidden" id="pm-id"><div id="pm-msg" style="font-size:.8rem;min-height:16px"></div>
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('pay-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePayStaff()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Org chart node modal -->
+<div class="overlay" id="org-modal">
+  <div class="modal"><h3>🌳 Position in Organogram</h3>
+    <div id="og-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="field"><label>Reports to (line manager)</label><select id="og-reports" class="fi"></select></div>
+    <div class="field"><label>Position title</label><input type="text" id="og-title" placeholder="e.g. Transport Officer"></div>
+    <div class="field"><label>Order among colleagues (lower = further left)</label><input type="number" id="og-order" value="100"></div>
+    <input type="hidden" id="og-id">
+    <div id="og-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('org-modal')">Cancel</button>
+      <button class="btn-add" style="margin:0" onclick="APP.saveOrgNode()">💾 Save</button>
+    </div>
   </div>
 </div>
 
