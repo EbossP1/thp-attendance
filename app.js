@@ -133,13 +133,23 @@ function _hideEmptyNavGroups(){
   });
 }
 function showPanel(id,sbId,e){
+  if(window.innerWidth<=768)setTimeout(closeAllSB,80);
   $(sbId).nextElementSibling.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   $(id).classList.add('active');
   document.querySelectorAll('#'+sbId+' .nav-item').forEach(n=>n.classList.remove('active'));
   if(e)e.currentTarget.classList.add('active');
   if(window.innerWidth<=768)$(sbId).classList.remove('open');
 }
-function toggleSB(id){$(id).classList.toggle('open');}
+function toggleSB(id){
+  const sb=$(id);if(!sb)return;
+  const open=sb.classList.toggle('open');
+  const bd=$('sb-backdrop');if(bd)bd.classList.toggle('on',open);
+  if(open){_restoreNavGroups();_hideEmptyNavGroups();}
+}
+function closeAllSB(){
+  document.querySelectorAll('.sidebar.open').forEach(e=>e.classList.remove('open'));
+  const bd=$('sb-backdrop');if(bd)bd.classList.remove('on');
+}
 function closeModal(id){$(id).classList.remove('open');}
 function selectLeaveType(el){APP.selectLeave(el);}
 
@@ -2766,14 +2776,13 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   async _applyPrivileges(id){
     const p=await this._fetchPriv();this._priv=p;
     if(p.hr.includes(id)){
-      const ct=$('nav-mgr-contract');if(ct)ct.classList.remove('contract-tab');
-      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));document.body.classList.add('hr-mode');this.renderHRDash('m-');setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},60);
+      document.querySelectorAll('.contract-tab').forEach(e=>e.classList.remove('contract-tab'));
+      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));
+      document.body.classList.add('hr-mode');this.renderHRDash('m-');
+      setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},60);
     }
-    if(p.cases.includes(id)){const cs=$('nav-mgr-cases');if(cs)cs.classList.remove('cases-tab');}
-    if(p.payroll.includes(id)){
-      const py=$('nav-mgr-payroll');if(py)py.classList.remove('payroll-tab');
-      const sp=$('nav-st-payroll');if(sp)sp.classList.remove('payroll-tab');
-    }
+    if(p.cases.includes(id))document.querySelectorAll('.cases-tab').forEach(e=>e.classList.remove('cases-tab'));
+    if(p.payroll.includes(id))document.querySelectorAll('.payroll-tab').forEach(e=>e.classList.remove('payroll-tab'));
   }
   async renderPrivileges(){
     const body=$('a-priv-body');if(!body)return;
@@ -3098,9 +3107,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   _setBadge(kind,n){
     const el=$(kind==='ann'?'badge-ann':'badge-docs');
-    if(!el)return;
-    el.textContent=n>0?(n>9?'9+':n):'';
-    el.classList.toggle('on',n>0);
+    if(el){el.textContent=n>0?(n>9?'9+':n):'';el.classList.toggle('on',n>0);}
+    if(kind==='doc'){const m=$('mob-badge-docs');if(m)m.style.display=n>0?'block':'none';}
   }
   async refreshNewBadges(){
     try{
