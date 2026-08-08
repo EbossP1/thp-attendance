@@ -779,3 +779,20 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 .nav-grp-body.hidden{max-height:0;opacity:0}
 .nav-grp-body .nav-item{padding-left:1.5rem}
 .nav-group.empty{display:none}
+/* New-item badges */
+.nv-badge{display:none;margin-left:.4rem;background:#dc2626;color:#fff;border-radius:999px;
+  font-size:.62rem;font-weight:700;padding:1px 6px;vertical-align:middle;line-height:1.5}
+.nv-badge.on{display:inline-block;animation:nvPulse 1.6s ease-in-out infinite}
+@keyframes nvPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.new-chip{background:#dc2626;color:#fff;border-radius:999px;font-size:.6rem;font-weight:700;
+  padding:1px 7px;margin-left:.45rem;letter-spacing:.3px}
+/* Appraisal KPA blocks */
+.kpa-box{border:1px solid var(--border);border-left:4px solid var(--navy,#2D3592);border-radius:10px;padding:.7rem .85rem;margin-bottom:.7rem;background:var(--surf2)}
+.kpa-hd{display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap}
+.kpa-hd input.kn{flex:1;min-width:150px;font-weight:600}
+.kpa-hd input.kw{width:78px}
+.kpi-row{display:flex;gap:.4rem;margin-bottom:.35rem;flex-wrap:wrap;align-items:center}
+.kpi-row input.ki{flex:2;min-width:130px}
+.kpi-row input.ks{flex:2;min-width:130px}
+.kpi-row input.kr{width:64px}
+.kpa-avg{font-size:.74rem;color:var(--text2);margin-top:.3rem}
