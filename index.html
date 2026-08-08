@@ -364,6 +364,7 @@
   <nav class="mob-nav" id="mob-nav-staff">
     <div class="mob-header">
       <div class="mob-header-left">
+        <button class="mob-menu-btn" onclick="toggleSB('sb-staff')" aria-label="Menu">☰</button>
         <div class="mob-hav" id="mob-st-av" style="background:#2D3592">U</div>
         <div><div class="mob-hname" id="mob-st-name">Staff</div><div class="mob-hrole">Employee · THP-Ghana</div></div>
       </div>
@@ -373,6 +374,9 @@
       <button class="mob-tab active" onclick="showPanel('p-clock','sb-staff',event);APP._setMobTab('mob-nav-staff',0)"><span class="mico">⏱</span>Clock</button>
       <button class="mob-tab" onclick="showPanel('p-logs','sb-staff',event);APP._setMobTab('mob-nav-staff',1)"><span class="mico">📋</span>Logs</button>
       <button class="mob-tab" onclick="showPanel('p-leave','sb-staff',event);APP._initLeaveForm();APP._markLeaveDecisionsSeen();APP._setMobTab('mob-nav-staff',2)"><span class="mico">🏖</span><span class="mob-notif" id="mob-badge-staff-leave"></span>Leave</button>
+      <button class="mob-tab" onclick="showPanel('st-docs','sb-staff',event);APP.renderStaffDocs();APP.markSeen('doc')"><span class="mico">📁</span><span class="mob-notif" id="mob-badge-docs"></span>Docs</button>
+      <button class="mob-tab" onclick="showPanel('st-appraisal','sb-staff',event);APP.renderMyAppraisals()"><span class="mico">📊</span>Appraisal</button>
+      <button class="mob-tab payroll-tab" onclick="showPanel('st-payroll','sb-staff',event);APP.renderPayroll('st-')"><span class="mico">₵</span>Payroll</button>
       <button class="mob-tab" onclick="showPanel('p-profile','sb-staff',event);APP._renderProfileForm('');APP._setMobTab('mob-nav-staff',3)"><span class="mico">👤</span>Profile</button>
       <button class="mob-tab" onclick="showPanel('p-chpw','sb-staff',event);APP._setMobTab('mob-nav-staff',4)"><span class="mico">🔑</span>Password</button>
     </div>
@@ -897,6 +901,7 @@
   <nav class="mob-nav" id="mob-nav-mgr">
     <div class="mob-header">
       <div class="mob-header-left">
+        <button class="mob-menu-btn" onclick="toggleSB('sb-mgr')" aria-label="Menu">☰</button>
         <div class="mob-hav" id="mob-mgr-av" style="background:#F5A623">M</div>
         <div><div class="mob-hname" id="mob-mgr-name">Manager</div><div class="mob-hrole">Manager · THP-Ghana</div></div>
       </div>
@@ -910,6 +915,19 @@
       <button class="mob-tab" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave();APP._setMobTab('mob-nav-mgr',4)"><span class="mico">🏖</span><span class="mob-notif" id="mob-badge-mgr-leave"></span><span id="mob-mgr-leave-text">Review</span></button>
       <button class="mob-tab" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory();APP._setMobTab('mob-nav-mgr',5)"><span class="mico">📒</span>History</button>
       <button class="mob-tab" id="mob-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport();APP._setMobTab('mob-nav-mgr',6)"><span class="mico">📈</span>Reports</button>
+      <button class="mob-tab contract-tab" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="mico">📄</span>Contracts</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="mico">🗂</span>Files</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-birthdays','sb-mgr',event);APP.renderBirthdays('m-')"><span class="mico">🎂</span>Birthdays</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="mico">📣</span>Notices</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="mico">📁</span>Library</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-performance','sb-mgr',event);APP.renderPerf('m-')"><span class="mico">📊</span>Appraisal</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-recruit','sb-mgr',event);APP.renderRecruit('m-')"><span class="mico">🧑‍💼</span>Recruit</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-training','sb-mgr',event);APP.renderTraining('m-')"><span class="mico">🎓</span>Training</button>
+      <button class="mob-tab cases-tab" onclick="showPanel('m-cases','sb-mgr',event);APP.renderCases('m-')"><span class="mico">⚖</span>Cases</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-orgchart','sb-mgr',event);APP.renderOrgChart('m-')"><span class="mico">🌳</span>Org</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-assistant','sb-mgr',event);APP.initAssistant()"><span class="mico">✨</span>Ask HR</button>
+      <button class="mob-tab hr-tab" onclick="showPanel('m-audit','sb-mgr',event);APP.renderAudit()"><span class="mico">🛡</span>Audit</button>
+      <button class="mob-tab payroll-tab" onclick="showPanel('m-payroll','sb-mgr',event);APP.renderPayroll('m-')"><span class="mico">₵</span>Payroll</button>
       <button class="mob-tab" onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-');APP._setMobTab('mob-nav-mgr',7)"><span class="mico">👤</span>Profile</button>
       <button class="mob-tab cl-only-tab" id="mob-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-');APP._setMobTab('mob-nav-mgr',8)"><span class="mico">🔄</span>Delegate</button>
     </div>
@@ -1201,6 +1219,7 @@
   <nav class="mob-nav" id="mob-nav-admin">
     <div class="mob-header">
       <div class="mob-header-left">
+        <button class="mob-menu-btn" onclick="toggleSB('sb-admin')" aria-label="Menu">☰</button>
         <div class="mob-hav" style="background:linear-gradient(135deg,var(--navy),#3f4ec0)">A</div>
         <div><div class="mob-hname">Administrator</div><div class="mob-hrole" style="color:var(--red)">Admin · THP-Ghana</div></div>
       </div>
@@ -1523,6 +1542,7 @@
   </div>
 </div>
 
+<div id="sb-backdrop" onclick="closeAllSB()"></div>
 <div id="toasts"></div>
 <script src="app.js"></script>
 <script>
