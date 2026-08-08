@@ -121,7 +121,8 @@
       <button class="nav-item active" onclick="showPanel('p-clock','sb-staff',event)"><span class="ico">⏱</span>Clock In / Out</button>
       <button class="nav-item"        onclick="showPanel('p-logs','sb-staff',event)"><span class="ico">📋</span>My Logs</button>
       <button class="nav-item"        onclick="showPanel('p-leave','sb-staff',event);APP._initLeaveForm();APP._markLeaveDecisionsSeen()"><span class="ico">🏖</span>Leave<span class="notif-badge" id="badge-staff-leave"></span></button>
-      <button class="nav-item"        onclick="showPanel('st-docs','sb-staff',event);APP.renderStaffDocs()"><span class="ico">📁</span>Documents</button>
+      <button class="nav-item"        onclick="showPanel('st-docs','sb-staff',event);APP.renderStaffDocs();APP.markSeen('doc')"><span class="ico">📁</span>Documents<span class="nv-badge" id="badge-docs"></span></button>
+      <button class="nav-item"        onclick="showPanel('st-appraisal','sb-staff',event);APP.renderMyAppraisals()"><span class="ico">📊</span>My Appraisal</button>
       <button class="nav-item"        onclick="showPanel('p-profile','sb-staff',event);APP._renderProfileForm('')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item"        onclick="showPanel('p-chpw','sb-staff',event)"><span class="ico">🔑</span>Change Password</button>
       <button class="nav-item payroll-tab" id="nav-st-payroll" onclick="showPanel('st-payroll','sb-staff',event);APP.renderPayroll('st-')"><span class="ico">₵</span>Payroll</button>
@@ -183,7 +184,7 @@
           <div class="stat"><div class="stat-lbl">Early Exits</div><div class="stat-val r" id="s-early">0</div><div class="stat-sub">this month</div></div>
         </div>
       <div id="st-feed" style="margin-top:1rem">
-        <div class="tcard" style="margin-bottom:1rem"><div class="tcard-hdr"><h4>📣 Announcements</h4></div><div id="st-ann-list" style="padding:1rem 1.3rem"></div></div>
+        <div class="tcard" style="margin-bottom:1rem"><div class="tcard-hdr"><h4>📣 Announcements<span class="nv-badge" id="badge-ann"></span></h4><div class="t-btns"><button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.markSeen('ann');APP.renderStaffFeed()">✓ Mark all read</button></div></div><div id="st-ann-list" style="padding:1rem 1.3rem"></div></div>
         <div class="tcard"><div class="tcard-hdr"><h4>📁 Documents from HR</h4></div><div class="scr"><table><thead><tr><th>Document</th><th>Category</th><th>Date</th><th style="width:110px"></th></tr></thead><tbody id="st-feed-docs"></tbody></table></div></div>
       </div>
       </div>
@@ -306,6 +307,7 @@
             <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('st-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('st-')">🏛 Statutory</button>
             <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('st-')">📌 Allocation</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('st-')">🧾 Preview Payslip</button>
             <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
@@ -318,8 +320,19 @@
             <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="st-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="st-ps-ceil" style="width:110px"></label>
             <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
+            <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="st-ps-relief" style="width:80px"></label>
           </div>
           <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
+        </div>
+      </div>
+      <div id="st-appraisal" class="panel">
+        <div class="pg-hdr"><h2>📊 My Appraisal</h2><p>Complete your self-assessment and submit it to your supervisor</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>My Reviews</h4><div class="t-btns"><button class="btn-add" style="margin:0" onclick="APP.openMyAppraisal()">＋ Start Self-Assessment</button></div></div>
+          <div class="scr"><table><thead><tr><th>Period</th><th>Type</th><th>Supervisor</th><th>Self Score</th><th>Status</th><th style="width:90px"></th></tr></thead><tbody id="st-apr-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>How it works:</strong> rate yourself 1–5 against each KPI, add your comments, choose your supervisor and submit. Your supervisor then adds their ratings, and HR and the Country Leader receive the completed review. Once submitted you can view but not change it.
         </div>
       </div>
       <div id="st-docs" class="panel">
@@ -656,6 +669,9 @@
         <div class="tcard" style="padding:1rem 1.3rem">
           <div class="field"><label>Title</label><input type="text" id="m-ann-title"></div>
           <div class="field"><label>Message</label><textarea id="m-ann-body" rows="3"></textarea></div>
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--text2);margin-bottom:.6rem">
+            <input type="checkbox" id="m-ann-email" checked> Also email all staff
+          </label>
           <button class="btn-add" style="margin:0" onclick="APP.postAnnouncement('m-')">📣 Post Announcement</button>
         </div>
         <div id="m-ann-list" style="margin-top:1rem"></div>
@@ -677,9 +693,21 @@
         </div>
       </div>
       <div id="m-performance" class="panel">
-        <div class="pg-hdr"><h2>📊 Performance</h2><p>Review records per staff member</p></div>
-        <div class="tcard"><div class="tcard-hdr"><h4>Reviews</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-performance','Performance Reviews')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openPerfModal()">＋ New Review</button></div></div>
-          <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Rating</th><th>Reviewer</th><th>Date</th><th>Comments</th><th style="width:70px"></th></tr></thead><tbody id="m-perf-body"></tbody></table></div></div>
+        <div class="pg-hdr"><h2>📊 Performance Appraisal</h2><p>Annual Performance Review — KPAs, weightings, self &amp; manager ratings</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Appraisals</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <select class="fi" id="m-ap-status" onchange="APP.renderPerf('m-')" style="width:160px"><option value="">All Statuses</option><option>Draft</option><option>Self-Assessed</option><option>Manager Reviewed</option><option>Acknowledged</option><option>Closed</option></select>
+              <button class="bsm bsm-teal" onclick="APP.renderPerf('m-')">🔄 Refresh</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-performance','Performance Appraisals')">🖨 Print</button>
+              <button class="btn-add" style="margin:0" onclick="APP.openPerfModal()">＋ New Appraisal</button>
+            </div>
+          </div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Type</th><th>Final Score</th><th>Rating</th><th>Status</th><th>Reviewed</th><th style="width:110px">Actions</th></tr></thead><tbody id="m-perf-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>Rating scale:</strong> 1 Unsatisfactory · 2 Below Criteria · 3 Achieved Criteria · 4 Above Criteria · 5 Exceeded All Criteria. Final score is the weighted average of KPA ratings (weightings must total 100%).
+        </div>
       </div>
       <div id="m-recruit" class="panel">
         <div class="pg-hdr"><h2>🧑‍💼 Recruitment</h2><p>Vacancies and candidate pipeline</p></div>
@@ -772,6 +800,7 @@
             <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('m-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('m-')">🏛 Statutory</button>
             <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('m-')">📌 Allocation</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('m-')">🧾 Preview Payslip</button>
             <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
@@ -784,6 +813,7 @@
             <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="m-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="m-ps-ceil" style="width:110px"></label>
             <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
+            <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="m-ps-relief" style="width:80px"></label>
           </div>
           <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
         </div>
@@ -1303,19 +1333,68 @@
   </div>
 </div>
 
-<!-- Performance review modal -->
-<div class="overlay" id="perf-modal">
-  <div class="modal"><h3>📊 Performance Review</h3>
-    <div class="field"><label>Staff</label><select id="pf-staff" class="fi"></select></div>
+<!-- Staff self-assessment modal -->
+<div class="overlay" id="myapr-modal">
+  <div class="modal" style="max-width:820px;max-height:90vh;overflow-y:auto"><h3>📊 My Self-Assessment</h3>
     <div class="form-row" style="gap:.5rem">
-      <div class="field"><label>Period</label><input type="text" id="pf-period" placeholder="e.g. 2026 Mid-Year"></div>
-      <div class="field"><label>Rating</label><select id="pf-rating" class="fi"><option>Outstanding</option><option>Exceeds Expectations</option><option selected>Meets Expectations</option><option>Needs Improvement</option><option>Unsatisfactory</option></select></div>
+      <div class="field"><label>Review Period</label><input type="text" id="ma-period" placeholder="e.g. 2026 Annual"></div>
+      <div class="field"><label>Review Type</label><select id="ma-type" class="fi"><option>Probation</option><option>Mid-Year</option><option selected>Annual</option></select></div>
     </div>
-    <div class="field"><label>Review Date</label><input type="date" id="pf-date"></div>
-    <div class="field"><label>Goals</label><textarea id="pf-goals" rows="2"></textarea></div>
-    <div class="field"><label>Comments</label><textarea id="pf-comments" rows="2"></textarea></div>
-    <input type="hidden" id="pf-id"><div id="pf-msg" style="font-size:.8rem;min-height:16px"></div>
-    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('perf-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePerf()">💾 Save</button></div>
+    <div class="field"><label>My Supervisor / Line Manager <span style="color:var(--red)">*</span></label><select id="ma-mgr" class="fi"></select></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:1rem 0 .4rem">
+      <div style="font-size:.8rem;font-weight:700;color:var(--teal);letter-spacing:.4px">RATE YOURSELF (1–5)</div>
+      <div style="font-size:.78rem">Weighting: <strong id="ma-wtot">0%</strong> · My score: <strong id="ma-score">0.00</strong></div>
+    </div>
+    <div id="ma-kpas"></div>
+    <div class="field"><label>My Achievements / Comments</label><textarea id="ma-comment" rows="3" placeholder="Summarise your key achievements this period."></textarea></div>
+    <div class="field"><label>Training / Development I Need</label><textarea id="ma-dev" rows="2"></textarea></div>
+    <input type="hidden" id="ma-id">
+    <div style="font-size:.74rem;color:var(--text3);line-height:1.5">1 Unsatisfactory · 2 Below Criteria · 3 Achieved Criteria · 4 Above Criteria · 5 Exceeded All Criteria</div>
+    <div id="ma-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('myapr-modal')">Cancel</button>
+      <button class="btn-add" style="margin:0" onclick="APP.submitMyAppraisal()">📤 Submit to Supervisor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Appraisal modal -->
+<div class="overlay" id="perf-modal">
+  <div class="modal" style="max-width:920px;max-height:90vh;overflow-y:auto"><h3>📊 Annual Performance Review</h3>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Staff</label><select id="pf-staff" class="fi" onchange="APP._pfFillStaff()"></select></div>
+      <div class="field"><label>Review Type</label><select id="pf-type" class="fi"><option>Probation</option><option>Mid-Year</option><option selected>Annual</option></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Period</label><input type="text" id="pf-period" placeholder="e.g. 2026 Annual"></div>
+      <div class="field"><label>Date of Review</label><input type="date" id="pf-date"></div>
+      <div class="field"><label>Status</label><select id="pf-status" class="fi"><option>Draft</option><option>Self-Assessed</option><option>Manager Reviewed</option><option>Acknowledged</option><option>Closed</option></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Job Title</label><input type="text" id="pf-job"></div>
+      <div class="field"><label>Department</label><input type="text" id="pf-dept"></div>
+      <div class="field"><label>Location</label><input type="text" id="pf-loc" placeholder="e.g. Accra"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Start Date with THP</label><input type="date" id="pf-startco"></div>
+      <div class="field"><label>Start in Current Position</label><input type="date" id="pf-startpos"></div>
+      <div class="field"><label>Line Manager</label><select id="pf-mgr" class="fi"></select></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:1rem 0 .4rem">
+      <div style="font-size:.8rem;font-weight:700;color:var(--teal);letter-spacing:.4px">KEY PERFORMANCE AREAS</div>
+      <div style="font-size:.78rem">Total weighting: <strong id="pf-wtot">0%</strong> · Final score: <strong id="pf-score">0.00</strong></div>
+    </div>
+    <div id="pf-kpas"></div>
+    <button class="bsm bsm-teal" style="margin-bottom:.8rem" onclick="APP.addKPA()">＋ Add KPA</button>
+    <div class="field"><label>Development Plan / Training Needs</label><textarea id="pf-dev" rows="2"></textarea></div>
+    <div class="field"><label>Employee Comment</label><textarea id="pf-emp" rows="2"></textarea></div>
+    <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--text2)"><input type="checkbox" id="pf-ack"> Employee has acknowledged this review</label>
+    <input type="hidden" id="pf-id"><div id="pf-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('perf-modal')">Cancel</button>
+      <button class="bsm bsm-gold" onclick="APP.printAppraisal()">🖨 Print Form</button>
+      <button class="btn-add" style="margin:0" onclick="APP.savePerf()">💾 Save</button>
+    </div>
   </div>
 </div>
 
@@ -1371,6 +1450,24 @@
       <div class="field"><label>Bank Account</label><input type="text" id="pm-account"></div>
     </div>
     <div class="field"><label>Allowances — one per line: Name : Amount : t (taxable) or n</label><textarea id="pm-allow" rows="3" placeholder="Transport : 400 : t&#10;Data bundle : 150 : n"></textarea></div>
+    <div class="field"><label>Designation (shown on payslip)</label><input type="text" id="pm-designation" placeholder="e.g. Transport Officer"></div>
+    <div style="font-size:.74rem;font-weight:700;color:var(--teal);margin:.6rem 0 .3rem;letter-spacing:.4px">EARNINGS (this month)</div>
+    <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:120px"><label>Arrears</label><input type="number" step="0.01" id="pm-arrears" value="0"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>Incentives</label><input type="number" step="0.01" id="pm-incentives" value="0"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>Bonus</label><input type="number" step="0.01" id="pm-bonus" value="0"></div>
+    </div>
+    <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:120px"><label>Over Time Pay</label><input type="number" step="0.01" id="pm-overtime" value="0"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>Fuel Allowance</label><input type="number" step="0.01" id="pm-fuel" value="0"></div>
+    </div>
+    <div style="font-size:.74rem;font-weight:700;color:var(--red);margin:.6rem 0 .3rem;letter-spacing:.4px">OTHER DEDUCTIONS</div>
+    <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:120px"><label>Salary Advance</label><input type="number" step="0.01" id="pm-advance" value="0"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>UG Credit</label><input type="number" step="0.01" id="pm-ug" value="0"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>Others</label><input type="number" step="0.01" id="pm-other" value="0"></div>
+    </div>
+    <div class="field"><label>PAYE Override (leave blank to use the calculated figure)</label><input type="number" step="0.01" id="pm-paye-ov" placeholder="calculated automatically"></div>
     <div class="field"><label>Grant / Project Allocation — one per line: Project : %</label><textarea id="pm-alloc" rows="2" placeholder="Grant A : 60&#10;Core : 40"></textarea></div>
     <input type="hidden" id="pm-id"><div id="pm-msg" style="font-size:.8rem;min-height:16px"></div>
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('pay-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePayStaff()">💾 Save</button></div>
