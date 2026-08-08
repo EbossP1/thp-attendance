@@ -2984,7 +2984,16 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const t=$(p+'ann-title').value.trim(),b=$(p+'ann-body').value.trim();
     if(!t)return toast('Title required','err');
     const r=await API._upsert('announcements',[{id:this._uid('ANN'),title:t,body:b,author:this.user.name,created_at:new Date().toISOString()}]);
-    if(r){$(p+'ann-title').value='';$(p+'ann-body').value='';toast('Announcement posted ✓');this.renderAnnouncements(p);}
+    if(r){
+      this.audit('Announcement posted','HR',t,'');
+      if($(p+'ann-email')?.checked){
+        const recips=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin'&&s.email)
+          .map(([i,s])=>({name:s.name,email:s.email}));
+        API.gasPost({action:'announceEmail',title:t,body:b,author:this.user.name,recipients:recips})
+          .then(res=>{if(res&&res.success)toast('Emailed to '+res.sent+' staff ✓');})
+          .catch(()=>{});
+      }
+      $(p+'ann-title').value='';$(p+'ann-body').value='';toast('Announcement posted ✓');this.renderAnnouncements(p);}
     else toast('Post failed: '+(API.lastError||'unknown error'),'err');
   }
   async delAnnouncement(id,p){
@@ -3080,12 +3089,37 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     body.innerHTML=rows.length?rows.map(d=>this._docRow(d)).join('')
       :'<tr><td colspan="4"><div class="empty"><div class="empty-ico">📁</div>No documents shared yet</div></td></tr>';
   }
+  /* ── New-item tracking (announcements & documents) ── */
+  _seenKey(kind){return 'thp_seen_'+kind+'_'+(this.user?.id||'x');}
+  _lastSeen(kind){try{return localStorage.getItem(this._seenKey(kind))||'1970-01-01';}catch(e){return '1970-01-01';}}
+  markSeen(kind){
+    try{localStorage.setItem(this._seenKey(kind),new Date().toISOString());}catch(e){}
+    this._setBadge(kind,0);
+  }
+  _setBadge(kind,n){
+    const el=$(kind==='ann'?'badge-ann':'badge-docs');
+    if(!el)return;
+    el.textContent=n>0?(n>9?'9+':n):'';
+    el.classList.toggle('on',n>0);
+  }
+  async refreshNewBadges(){
+    try{
+      const annSeen=this._lastSeen('ann'),docSeen=this._lastSeen('doc');
+      const anns=await API._get('announcements','select=created_at&order=created_at.desc&limit=50')||[];
+      this._setBadge('ann',anns.filter(a=>String(a.created_at)>annSeen).length);
+      const vis=this._visibleDocFilter().map(v=>'"'+v+'"').join(',');
+      const docs=await API._get('org_documents','select=created_at&visibility=in.('+vis+')&order=created_at.desc&limit=50')||[];
+      this._setBadge('doc',docs.filter(d=>String(d.created_at)>docSeen).length);
+    }catch(e){}
+  }
+
   /* ── Staff dashboard feed: announcements + documents ── */
   async renderStaffFeed(){
     const al=$('st-ann-list');
     if(al){
       const anns=await API._get('announcements','order=created_at.desc&limit=5')||[];
-      al.innerHTML=anns.length?anns.map(a=>`<div class="ann-card"><h5>${a.title}</h5><div style="font-size:.8rem;white-space:pre-wrap">${a.body||''}</div><div class="ann-meta">${a.author||''} · ${String(a.created_at).slice(0,10)}</div></div>`).join('')
+      const seen=this._lastSeen('ann');
+      al.innerHTML=anns.length?anns.map(a=>`<div class="ann-card"><h5>${a.title}${String(a.created_at)>seen?'<span class="new-chip">NEW</span>':''}</h5><div style="font-size:.8rem;white-space:pre-wrap">${a.body||''}</div><div class="ann-meta">${a.author||''} · ${String(a.created_at).slice(0,10)}</div></div>`).join('')
         :'<div style="color:var(--text3);font-size:.8rem">No announcements yet.</div>';
     }
     const fd=$('st-feed-docs');
@@ -3094,7 +3128,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const rows=await API._get('org_documents','visibility=in.('+vis+')&order=created_at.desc&limit=10')||[];
       fd.innerHTML=rows.length?rows.map(d=>this._docRow(d)).join('')
         :'<tr><td colspan="4" style="color:var(--text3);font-size:.8rem">No documents shared yet.</td></tr>';
-    }
+    }    this.refreshNewBadges();
   }
   /* ── Birthday wish popup (once per year, on the staff\'s own birthday) ── */
   async checkBirthdayWish(){
@@ -3411,32 +3445,259 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     else $('ap-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
   }
 
-  /* ── Performance ── */
+  /* ── Staff self-assessment ── */
+  async renderMyAppraisals(){
+    const body=$('st-apr-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('performance_appraisals','staff_id=eq.'+encodeURIComponent(this.user.id)+'&order=review_date.desc.nullslast')||[];
+    this._myApr=rows;
+    if(!rows.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">📊</div>No appraisals yet — click ＋ Start Self-Assessment</div></td></tr>';return;}
+    const sc={Draft:'none','Self-Assessed':'amber','Manager Reviewed':'amber',Acknowledged:'green',Closed:'green'};
+    body.innerHTML=rows.map(r=>{
+      let k=[];try{k=JSON.parse(r.kpas||'[]');}catch(e){}
+      const selfScore=k.reduce((t,x)=>{
+        const rs=(x.kpis||[]).map(y=>+y.self||0).filter(v=>v>0);
+        const avg=rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0;
+        return t+avg*(+x.weight||0)/100;},0);
+      const done=r.status!=='Draft';
+      return `<tr><td><strong>${r.period||'—'}</strong></td><td style="font-size:.8rem">${r.review_type||'Annual'}</td>
+        <td style="font-size:.8rem">${this._sName(r.line_manager)||'—'}</td>
+        <td>${selfScore.toFixed(2)} / 5</td>
+        <td><span class="c-flag ${sc[r.status]||'none'}">${r.status||'Draft'}</span></td>
+        <td>${done?'<span style="font-size:.72rem;color:var(--text3)">submitted</span>':`<button class="bsm bsm-navy" onclick="APP.openMyAppraisal('${r.id}')">✏</button>`}</td></tr>`;
+    }).join('');
+  }
+  openMyAppraisal(id){
+    const r=id?(this._myApr||[]).find(x=>x.id===id):null;
+    if(r&&r.status!=='Draft')return toast('This review has already been submitted','info');
+    const me=this.staff[this.user.id]||{};
+    $('ma-id').value=r?.id||'';
+    $('ma-period').value=r?.period||(new Date().getFullYear()+' Annual');
+    $('ma-type').value=r?.review_type||'Annual';
+    const mgrs=Object.entries(this.staff).filter(([i,s])=>(s.role==='manager'||s.role==='country_leader')&&i!==this.user.id)
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    const pick=r?.line_manager||me.supervisor||'';
+    $('ma-mgr').innerHTML='<option value="">— Select your supervisor —</option>'+
+      mgrs.map(([i,s])=>`<option value="${i}" ${pick===i?'selected':''}>${s.name} — ${s.unit||''}</option>`).join('');
+    $('ma-comment').value=r?.emp_comment||'';
+    $('ma-dev').value=r?.dev_plan||'';
+    let k=[];try{k=JSON.parse(r?.kpas||'[]');}catch(e){}
+    this._myKpas=(k&&k.length)?k:this._defaultKPAs();
+    this._renderMyKPAs();
+    $('ma-msg').textContent='';
+    $('myapr-modal').classList.add('open');
+  }
+  _renderMyKPAs(){
+    const el=$('ma-kpas');if(!el)return;
+    el.innerHTML=this._myKpas.map((k,i)=>`
+      <div class="kpa-box">
+        <div class="kpa-hd"><span style="font-size:.72rem;color:var(--text3);font-weight:700">KPA ${i+1}</span>
+          <strong style="flex:1">${k.name||''}</strong>
+          <span style="font-size:.74rem;color:var(--text2)">${k.weight||0}%</span></div>
+        ${(k.kpis||[]).map((x,j)=>`<div class="kpi-row">
+          <input class="fi ki" value="${x.kpi||''}" placeholder="What did you deliver?" oninput="APP._myKpiSet(${i},${j},'kpi',this.value)">
+          <input class="fi kr" type="number" min="0" max="5" step="0.5" value="${x.self||0}" title="Your rating" oninput="APP._myKpiSet(${i},${j},'self',this.value)">
+          <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2)" onclick="APP._myDelKPI(${i},${j})">✕</button>
+        </div>`).join('')}
+        <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2);margin-top:.2rem" onclick="APP._myAddKPI(${i})">＋ Add achievement</button>
+      </div>`).join('');
+    const w=this._myKpas.reduce((t,k)=>t+(+k.weight||0),0);
+    const sc=this._myKpas.reduce((t,k)=>{
+      const rs=(k.kpis||[]).map(x=>+x.self||0).filter(v=>v>0);
+      const avg=rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0;
+      return t+avg*(+k.weight||0)/100;},0);
+    if($('ma-wtot'))$('ma-wtot').textContent=w+'%';
+    if($('ma-score'))$('ma-score').textContent=sc.toFixed(2);
+    return sc;
+  }
+  _myKpiSet(i,j,f,v){this._myKpas[i].kpis[j][f]=(f==='self')?(+v||0):v;if(f==='self')this._renderMyKPAs();}
+  _myAddKPI(i){this._myKpas[i].kpis.push({kpi:'',standard:'',self:0,mgr:0});this._renderMyKPAs();}
+  _myDelKPI(i,j){this._myKpas[i].kpis.splice(j,1);this._renderMyKPAs();}
+  async submitMyAppraisal(){
+    const mgr=$('ma-mgr').value;
+    if(!mgr)return $('ma-msg').innerHTML='<span style="color:var(--red)">Please select your supervisor.</span>';
+    const filled=this._myKpas.some(k=>(k.kpis||[]).some(x=>(+x.self||0)>0));
+    if(!filled)return $('ma-msg').innerHTML='<span style="color:var(--red)">Please rate yourself on at least one item.</span>';
+    if(!confirm('Submit your self-assessment to '+this._sName(mgr)+'?\n\nYou will not be able to edit it afterwards.'))return;
+    const score=this._renderMyKPAs();
+    const id=$('ma-id').value||this._uid('APR');
+    const me=this.staff[this.user.id]||{};
+    $('ma-msg').innerHTML='<span style="color:var(--teal)">⏳ Submitting…</span>';
+    const r=await API._upsert('performance_appraisals',[{id,staff_id:this.user.id,period:$('ma-period').value.trim(),
+      review_type:$('ma-type').value,review_date:new Date().toISOString().slice(0,10),
+      job_title:'',department:me.unit||'',location:'',line_manager:mgr,
+      kpas:JSON.stringify(this._myKpas),final_score:+score.toFixed(2),
+      dev_plan:$('ma-dev').value.trim(),emp_comment:$('ma-comment').value.trim(),
+      status:'Self-Assessed',updated_at:new Date().toISOString()}]);
+    if(!r)return $('ma-msg').innerHTML='<span style="color:var(--red)">Submit failed: '+(API.lastError||'')+'</span>';
+    const recips=[];
+    const push=id2=>{const e=this.staff[id2]?.email;if(e)recips.push({name:this.staff[id2].name,email:e});};
+    push(mgr);push(HR_MANAGER_ID);push(COUNTRY_LEADER_ID);
+    API.gasPost({action:'appraisalNotify',staffName:this.user.name,period:$('ma-period').value.trim(),
+      supervisor:this._sName(mgr),score:score.toFixed(2),recipients:recips}).catch(()=>{});
+    this.audit('Self-assessment submitted','HR',this.user.name,$('ma-period').value.trim());
+    closeModal('myapr-modal');
+    toast('Self-assessment submitted to '+this._sName(mgr)+' ✓');
+    this.renderMyAppraisals();
+  }
+
+  /* ── Performance Appraisal (THP Annual Review Form) ── */
+  _ratingWord(v){return['—','Unsatisfactory','Below Criteria','Achieved Criteria','Above Criteria','Exceeded All'][Math.round(+v||0)]||'—';}
+  _defaultKPAs(){return[
+    {name:'Financial',weight:30,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
+    {name:'Customer',weight:30,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
+    {name:'Internal Business Process',weight:20,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
+    {name:'Learning & Growth',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
+    {name:'Values & Behaviours',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''}];}
   async renderPerf(p){
-    const body=$(p+'perf-body');if(!body)return;
-    body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
-    const rows=await API._get('performance_reviews','order=review_date.desc.nullslast&limit=300')||[];
+    const body=$('m-perf-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="8" style="color:var(--text3)">Loading…</td></tr>';
+    let rows=await API._get('performance_appraisals','order=review_date.desc.nullslast&limit=300')||[];
+    const st=$('m-ap-status')?.value||'';
+    if(st)rows=rows.filter(r=>r.status===st);
     this._perfRows=rows;
-    if(!rows.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">📊</div>No reviews yet</div></td></tr>';return;}
-    body.innerHTML=rows.map(r=>`<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td>${r.period||'—'}</td><td style="font-size:.78rem">${r.rating||'—'}</td><td style="font-size:.78rem">${r.reviewer||'—'}</td><td style="font-size:.78rem">${r.review_date?String(r.review_date).slice(0,10):'—'}</td><td style="font-size:.74rem;color:var(--text2)">${r.comments||'—'}</td><td><button class="bsm bsm-navy" onclick="APP.openPerfModal('${r.id}')">✏</button></td></tr>`).join('');
+    if(!rows.length){body.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-ico">📊</div>No appraisals yet — click ＋ New Appraisal</div></td></tr>';return;}
+    const sc={Draft:'none','Self-Assessed':'amber','Manager Reviewed':'amber',Acknowledged:'green',Closed:'green'};
+    body.innerHTML=rows.map(r=>{
+      const score=(+r.final_score||0).toFixed(2);
+      const band=score>=4.5?'green':score>=3?'green':score>=2?'amber':'red';
+      return `<tr><td><strong>${this._sName(r.staff_id)}</strong><br><span style="font-size:.7rem;color:var(--text3)">${r.job_title||''}</span></td>
+        <td style="font-size:.8rem">${r.period||'—'}</td><td style="font-size:.78rem">${r.review_type||'Annual'}</td>
+        <td><strong>${score}</strong> / 5</td>
+        <td><span class="c-flag ${band}">${this._ratingWord(score)}</span></td>
+        <td><span class="c-flag ${sc[r.status]||'none'}">${r.status||'Draft'}</span>${r.ack_by_staff?' ✔':''}</td>
+        <td style="font-size:.76rem">${r.review_date?String(r.review_date).slice(0,10):'—'}</td>
+        <td><button class="bsm bsm-navy" onclick="APP.openPerfModal('${r.id}')">✏</button></td></tr>`;
+    }).join('');
   }
   openPerfModal(id){
     const r=id?(this._perfRows||[]).find(x=>x.id===id):null;
     this._popStaffSel('pf-staff',r?.staff_id);
+    const mgrs=Object.entries(this.staff).filter(([i,s])=>s.role==='manager'||s.role==='country_leader').sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    $('pf-mgr').innerHTML='<option value="">— Not set —</option>'+mgrs.map(([i,s])=>`<option value="${i}" ${r?.line_manager===i?'selected':''}>${s.name}</option>`).join('');
     $('pf-id').value=r?.id||'';
-    $('pf-period').value=r?.period||'';
-    $('pf-rating').value=r?.rating||'Meets Expectations';
-    $('pf-date').value=r?.review_date?String(r.review_date).slice(0,10):'';
-    $('pf-goals').value=r?.goals||'';
-    $('pf-comments').value=r?.comments||'';
+    $('pf-type').value=r?.review_type||'Annual';
+    $('pf-period').value=r?.period||(new Date().getFullYear()+' Annual');
+    $('pf-date').value=r?.review_date?String(r.review_date).slice(0,10):new Date().toISOString().slice(0,10);
+    $('pf-status').value=r?.status||'Draft';
+    $('pf-job').value=r?.job_title||'';
+    $('pf-dept').value=r?.department||'';
+    $('pf-loc').value=r?.location||'Accra';
+    $('pf-startco').value=r?.start_company?String(r.start_company).slice(0,10):'';
+    $('pf-startpos').value=r?.start_position?String(r.start_position).slice(0,10):'';
+    $('pf-dev').value=r?.dev_plan||'';
+    $('pf-emp').value=r?.emp_comment||'';
+    $('pf-ack').checked=!!r?.ack_by_staff;
+    let k=[];try{k=JSON.parse(r?.kpas||'[]');}catch(e){}
+    this._kpas=(k&&k.length)?k:this._defaultKPAs();
+    if(!r)this._pfFillStaff();
+    this._renderKPAs();
     $('pf-msg').textContent='';
     $('perf-modal').classList.add('open');
   }
+  _pfFillStaff(){
+    const id=$('pf-staff')?.value,s=this.staff[id];if(!s)return;
+    if(!$('pf-dept').value)$('pf-dept').value=s.unit||'';
+    if(!$('pf-startco').value&&s.contractStart)$('pf-startco').value=String(s.contractStart).slice(0,10);
+    if(!$('pf-mgr').value&&s.supervisor)$('pf-mgr').value=s.supervisor;
+  }
+  _renderKPAs(){
+    const el=$('pf-kpas');if(!el)return;
+    el.innerHTML=this._kpas.map((k,i)=>`
+      <div class="kpa-box">
+        <div class="kpa-hd">
+          <span style="font-size:.72rem;color:var(--text3);font-weight:700">KPA ${i+1}</span>
+          <input class="fi kn" value="${k.name||''}" placeholder="KPA name" oninput="APP._kpaSet(${i},'name',this.value)">
+          <input class="fi kw" type="number" min="0" max="100" value="${k.weight||0}" oninput="APP._kpaSet(${i},'weight',this.value)"> <span style="font-size:.74rem;color:var(--text2)">% weight</span>
+          <button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.delKPA(${i})">✕</button>
+        </div>
+        ${(k.kpis||[]).map((x,j)=>`<div class="kpi-row">
+          <input class="fi ki" value="${x.kpi||''}" placeholder="KPI" oninput="APP._kpiSet(${i},${j},'kpi',this.value)">
+          <input class="fi ks" value="${x.standard||''}" placeholder="Quality standard" oninput="APP._kpiSet(${i},${j},'standard',this.value)">
+          <input class="fi kr" type="number" min="0" max="5" step="0.5" value="${x.self||0}" title="Self rating" oninput="APP._kpiSet(${i},${j},'self',this.value)">
+          <input class="fi kr" type="number" min="0" max="5" step="0.5" value="${x.mgr||0}" title="Manager rating" oninput="APP._kpiSet(${i},${j},'mgr',this.value)">
+          <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2)" onclick="APP.delKPI(${i},${j})">✕</button>
+        </div>`).join('')}
+        <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2);margin:.2rem 0 .4rem" onclick="APP.addKPI(${i})">＋ KPI</button>
+        <input class="fi" value="${k.commentary||''}" placeholder="Commentary" oninput="APP._kpaSet(${i},'commentary',this.value)">
+        <div class="kpa-avg">Average rating: <strong>${this._kpaAvg(k).toFixed(2)}</strong> · Weighted: <strong>${(this._kpaAvg(k)*(+k.weight||0)/100).toFixed(3)}</strong></div>
+      </div>`).join('');
+    this._pfTotals();
+  }
+  _kpaAvg(k){
+    const rs=(k.kpis||[]).map(x=>{
+      const self=+x.self||0,mgr=+x.mgr||0;
+      if(self&&mgr)return (self+mgr)/2;
+      return mgr||self||0;
+    }).filter(v=>v>0);
+    return rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:0;
+  }
+  _pfTotals(){
+    const w=this._kpas.reduce((t,k)=>t+(+k.weight||0),0);
+    const score=this._kpas.reduce((t,k)=>t+this._kpaAvg(k)*(+k.weight||0)/100,0);
+    const wt=$('pf-wtot');if(wt){wt.textContent=w+'%';wt.style.color=Math.abs(w-100)<0.01?'var(--green)':'var(--red)';}
+    const sc=$('pf-score');if(sc)sc.textContent=score.toFixed(2);
+    return{w,score};
+  }
+  _kpaSet(i,f,v){this._kpas[i][f]=(f==='weight')?(+v||0):v;if(f==='weight')this._pfTotals();else if(f==='name'||f==='commentary')return;this._pfTotals();}
+  _kpiSet(i,j,f,v){this._kpas[i].kpis[j][f]=(f==='self'||f==='mgr')?(+v||0):v;if(f==='self'||f==='mgr')this._renderKPAs();}
+  addKPA(){this._kpas.push({name:'',weight:0,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''});this._renderKPAs();}
+  delKPA(i){this._kpas.splice(i,1);this._renderKPAs();}
+  addKPI(i){this._kpas[i].kpis.push({kpi:'',standard:'',self:0,mgr:0});this._renderKPAs();}
+  delKPI(i,j){this._kpas[i].kpis.splice(j,1);this._renderKPAs();}
   async savePerf(){
-    const id=$('pf-id').value||this._uid('PR');
-    const r=await API._upsert('performance_reviews',[{id,staff_id:$('pf-staff').value,period:$('pf-period').value.trim(),rating:$('pf-rating').value,review_date:$('pf-date').value||null,goals:$('pf-goals').value.trim(),comments:$('pf-comments').value.trim(),reviewer:this.user.name}]);
-    if(r){closeModal('perf-modal');toast('Review saved ✓');this.renderPerf('m-');}
-    else $('pf-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+    const staff=$('pf-staff').value;
+    if(!staff)return $('pf-msg').innerHTML='<span style="color:var(--red)">Select a staff member.</span>';
+    const {w,score}=this._pfTotals();
+    if(Math.abs(w-100)>0.01)return $('pf-msg').innerHTML='<span style="color:var(--red)">KPA weightings must total 100% (currently '+w+'%).</span>';
+    const id=$('pf-id').value||this._uid('APR');
+    $('pf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('performance_appraisals',[{id,staff_id:staff,period:$('pf-period').value.trim(),
+      review_type:$('pf-type').value,review_date:$('pf-date').value||null,job_title:$('pf-job').value.trim(),
+      department:$('pf-dept').value.trim(),location:$('pf-loc').value.trim(),
+      start_company:$('pf-startco').value||null,start_position:$('pf-startpos').value||null,
+      line_manager:$('pf-mgr').value,kpas:JSON.stringify(this._kpas),final_score:+score.toFixed(2),
+      dev_plan:$('pf-dev').value.trim(),emp_comment:$('pf-emp').value.trim(),status:$('pf-status').value,
+      ack_by_staff:$('pf-ack').checked,ack_date:$('pf-ack').checked?new Date().toISOString().slice(0,10):null,
+      updated_at:new Date().toISOString()}]);
+    if(r){this.audit('Appraisal saved','HR',this._sName(staff),$('pf-period').value+' · score '+score.toFixed(2));
+      closeModal('perf-modal');toast('Appraisal saved ✓');this.renderPerf('m-');}
+    else $('pf-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+  printAppraisal(){
+    const {score}=this._pfTotals();
+    const nm=this._sName($('pf-staff').value);
+    const rows=this._kpas.map((k,i)=>`
+      <tr><td colspan="6" style="background:#eef1ff;font-weight:bold">KPA ${i+1}: ${k.name||''} — weighting ${k.weight||0}%</td></tr>
+      <tr class="hd"><th>KPI</th><th>Quality Standard</th><th>Self (1-5)</th><th>Manager (1-5)</th><th>Final Avg</th><th>Weighted</th></tr>
+      ${(k.kpis||[]).map(x=>{const f=(+x.self&&+x.mgr)?((+x.self+ +x.mgr)/2):(+x.mgr|| +x.self||0);
+        return `<tr><td>${x.kpi||''}</td><td>${x.standard||''}</td><td>${x.self||0}</td><td>${x.mgr||0}</td><td>${f.toFixed(2)}</td><td></td></tr>`;}).join('')}
+      <tr><td colspan="4" style="font-style:italic">Commentary: ${k.commentary||'—'}</td><td><strong>${this._kpaAvg(k).toFixed(2)}</strong></td><td><strong>${(this._kpaAvg(k)*(+k.weight||0)/100).toFixed(3)}</strong></td></tr>`).join('');
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><meta charset="UTF-8"><title>Appraisal — ${nm}</title><style>
+      body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:14mm}
+      h1{font-size:15px;color:#2D3592;border-bottom:3px solid #2D3592;padding-bottom:7px;margin:0 0 4px}
+      .meta{font-size:10px;color:#555;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse;margin-bottom:12px}
+      td,th{border:1px solid #d5d5d5;padding:5px 7px;font-size:10px;text-align:left;vertical-align:top}
+      .hd th{background:#2D3592;color:#fff;font-size:9.5px}
+      .score{font-size:13px;font-weight:bold;color:#2D3592;margin:10px 0}
+      .sig{display:flex;gap:40px;margin-top:36px}
+      .sig div{flex:1;border-top:1px solid #777;padding-top:5px;font-size:10px}
+      </style></head><body>
+      <h1>The Hunger Project — Ghana · Annual Performance Review</h1>
+      <div class="meta"><strong>${nm}</strong> · ${$('pf-job').value||''} · ${$('pf-dept').value||''} · ${$('pf-loc').value||''}<br>
+        Period: ${$('pf-period').value||''} · Type: ${$('pf-type').value} · Review date: ${$('pf-date').value||''}<br>
+        Line manager: ${this._sName($('pf-mgr').value)||'—'}</div>
+      <table>${rows}</table>
+      <div class="score">FINAL SCORE: ${score.toFixed(2)} / 5 — ${this._ratingWord(score)}</div>
+      <table><tr><td style="width:50%"><strong>Development Plan</strong><br>${$('pf-dev').value||'—'}</td>
+        <td><strong>Employee Comment</strong><br>${$('pf-emp').value||'—'}</td></tr></table>
+      <div class="sig"><div>Employee Signature &amp; Date</div><div>Line Manager Signature &amp; Date</div></div>
+      <div style="text-align:center;margin-top:16px" class="no-print">
+        <button onclick="window.print()" style="padding:8px 22px;background:#2D3592;color:#fff;border:0;border-radius:6px;font-weight:600;cursor:pointer">🖨 Print</button></div>
+      </body></html>`);
+    w.document.close();
   }
 
   /* ── Training ── */
@@ -3615,7 +3876,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ── Payroll (Finance: Ernest + Emmanuel; settings-driven) ── */
-  _payDefaults(){return{ssnitEmployeePct:5.5,ssnitEmployerPct:13,ssnitCeilingMonthly:69000,tier3MaxPct:16.5,
+  _payDefaults(){return{ssnitEmployeePct:5.5,ssnitEmployerPct:13,ssnitCeilingMonthly:69000,tier3MaxPct:16.5,extraReliefPct:5,
     bands:[{w:490,r:0},{w:110,r:.05},{w:130,r:.1},{w:3166.67,r:.175},{w:16000,r:.25},{w:30520,r:.3},{w:null,r:.35}]};}
   _ghs(n){return 'GH₵ '+(Number(n)||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});}
   async _loadPaySettings(){
@@ -3631,25 +3892,36 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     s.ssnitEmployerPct=+($(p+'ps-empr').value)||s.ssnitEmployerPct;
     s.ssnitCeilingMonthly=+($(p+'ps-ceil').value)||s.ssnitCeilingMonthly;
     s.tier3MaxPct=+($(p+'ps-t3').value)||s.tier3MaxPct;
+    s.extraReliefPct=+($(p+'ps-relief').value)||0;
     this._payS=s;
     const r=await API._upsert('payroll_settings',[{key:'main',value:JSON.stringify(s)}]);
     if(r){toast('Settings saved ✓');this.renderPayroll(p);}else toast('Save failed','err');
   }
   _calcPay(ps,S){
+    const n=v=>+v||0;
     let allow=[];try{allow=JSON.parse(ps.allowances||'[]');}catch(e){}
-    const taxA=allow.filter(a=>a.tax).reduce((t,a)=>t+(+a.a||0),0);
-    const nonTax=allow.filter(a=>!a.tax).reduce((t,a)=>t+(+a.a||0),0);
-    const basic=+ps.basic||0;
-    const gross=basic+taxA+nonTax;
+    const basic=n(ps.basic);
+    const arrears=n(ps.arrears),incent=n(ps.incentives),bonus=n(ps.bonus),ot=n(ps.overtime),fuel=n(ps.fuel_allowance);
+    const taxA=allow.filter(a=>a.tax).reduce((t,a)=>t+n(a.a),0);
+    const nonTax=allow.filter(a=>!a.tax).reduce((t,a)=>t+n(a.a),0);
+    // Cash earnings that attract tax alongside basic
+    const taxableExtras=arrears+incent+bonus+ot+taxA;
+    const gross=basic+arrears+incent+bonus+ot+fuel+taxA+nonTax;
     const capped=Math.min(basic,S.ssnitCeilingMonthly);
     const ssnitEmp=S.ssnitEmployeePct/100*capped;
-    const tier3=Math.min(+ps.tier3_pct||0,S.tier3MaxPct)/100*basic;
-    let taxable=Math.max(0,basic-ssnitEmp-tier3+taxA);
+    const tier3=Math.min(n(ps.tier3_pct),S.tier3MaxPct)/100*basic;   // Provident Fund
+    const extraRelief=(+S.extraReliefPct||0)/100*basic;   // Tier 2 relief (matches THP payslips)
+    let taxable=Math.max(0,basic-ssnitEmp-tier3-extraRelief+taxableExtras);
     let paye=0,rem=taxable;
     for(const b of S.bands){const chunk=b.w===null?rem:Math.min(rem,b.w);paye+=chunk*b.r;rem-=chunk;if(rem<=0)break;}
-    const net=gross-ssnitEmp-tier3-paye;
+    if(ps.paye_override!==null&&ps.paye_override!==undefined&&ps.paye_override!=='')paye=n(ps.paye_override);
+    const advance=n(ps.salary_advance),ug=n(ps.ug_credit),other=n(ps.other_deductions);
+    const totalDed=ssnitEmp+tier3+paye+advance+ug+other;
+    const net=gross-totalDed;
     const emprSSNIT=S.ssnitEmployerPct/100*capped;
-    return{gross,taxA,nonTax,ssnitEmp,tier3,paye,net,cost:gross+emprSSNIT,allowStr:allow.map(a=>`${a.n} ${this._ghs(a.a)}${a.tax?'':' (nt)'}`).join(', ')||'—'};
+    return{gross,taxA,nonTax,arrears,incent,bonus,ot,fuel,ssnitEmp,tier3,paye,advance,ug,other,totalDed,net,
+      cost:gross+emprSSNIT,
+      allowStr:allow.map(a=>`${a.n} ${this._ghs(a.a)}${a.tax?'':' (nt)'}`).join(', ')||'—'};
   }
   async renderPayroll(p){
     const body=$(p+'pay-body');if(!body)return;
@@ -3657,6 +3929,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const S=await this._loadPaySettings();
     $(p+'ps-emp').value=S.ssnitEmployeePct;$(p+'ps-empr').value=S.ssnitEmployerPct;
     $(p+'ps-ceil').value=S.ssnitCeilingMonthly;$(p+'ps-t3').value=S.tier3MaxPct;
+    if($(p+'ps-relief'))$(p+'ps-relief').value=S.extraReliefPct??0;
     if(!$(p+'pay-month').value)$(p+'pay-month').value=new Date().toISOString().slice(0,7);
     const rows=await API._get('payroll_staff','select=*')||[];
     this._payRows=rows;const payMap={};rows.forEach(r=>payMap[r.staff_id]=r);
@@ -3669,7 +3942,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const c=this._calcPay(ps,S);
       Object.keys(tot).forEach(k=>tot[k]+=c[k]);
       let alloc=[];try{alloc=JSON.parse(ps.cost_allocation||'[]');}catch(e){}
-      this._payCalc.push({id,name:s.name,unit:s.unit,email:s.email||'',...c,basic:+ps.basic,alloc});
+      this._payCalc.push({id,name:s.name,unit:s.unit,email:s.email||'',designation:ps.designation||'',...c,basic:+ps.basic,alloc});
       return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td>${this._ghs(ps.basic)}</td><td style="font-size:.72rem">${c.allowStr}</td><td>${this._ghs(c.gross)}</td><td>${this._ghs(c.ssnitEmp)}</td><td>${this._ghs(c.tier3)}</td><td>${this._ghs(c.paye)}</td><td><strong>${this._ghs(c.net)}</strong></td><td>${this._ghs(c.cost)}</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏</button></td></tr>`;
     }).join('');
     const sm=$(p+'pay-summary');
@@ -3691,6 +3964,12 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('pm-bank').value='';$('pm-account').value='';
     API.getHRFile(id).then(hf=>{if($('pm-id').value===id){$('pm-bank').value=hf?.bank_name||'';$('pm-account').value=hf?.bank_account||'';}});
     $('pm-allow').value=allow.map(a=>`${a.n} : ${a.a} : ${a.tax?'t':'n'}`).join('\n');
+    $('pm-designation').value=ps?.designation||'';
+    ['arrears','incentives','bonus','overtime','fuel','advance','ug','other'].forEach(k=>{
+      const map={arrears:'arrears',incentives:'incentives',bonus:'bonus',overtime:'overtime',
+        fuel:'fuel_allowance',advance:'salary_advance',ug:'ug_credit',other:'other_deductions'};
+      const el=$('pm-'+k);if(el)el.value=ps?.[map[k]]||0;});
+    $('pm-paye-ov').value=(ps?.paye_override===null||ps?.paye_override===undefined)?'':ps.paye_override;
     let alloc=[];try{alloc=JSON.parse(ps?.cost_allocation||'[]');}catch(e){}
     $('pm-alloc').value=alloc.map(x=>`${x.project} : ${x.pct}`).join('\n');
     $('pm-msg').textContent='';
@@ -3706,7 +3985,15 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const q=l.split(':').map(x=>x.trim());return{project:q[0]||'Unallocated',pct:+q[1]||0};});
     const totPct=alloc.reduce((t,x)=>t+x.pct,0);
     if(alloc.length&&Math.abs(totPct-100)>0.01)return $('pm-msg').innerHTML='<span style="color:var(--red)">Allocation must total 100% (currently '+totPct+'%).</span>';
-    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,cost_allocation:JSON.stringify(alloc),updated_at:new Date().toISOString()}]);
+    const ov=$('pm-paye-ov').value.trim();
+    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),
+      tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,cost_allocation:JSON.stringify(alloc),
+      designation:$('pm-designation').value.trim(),
+      arrears:+$('pm-arrears').value||0,incentives:+$('pm-incentives').value||0,bonus:+$('pm-bonus').value||0,
+      overtime:+$('pm-overtime').value||0,fuel_allowance:+$('pm-fuel').value||0,
+      salary_advance:+$('pm-advance').value||0,ug_credit:+$('pm-ug').value||0,other_deductions:+$('pm-other').value||0,
+      paye_override:ov===''?null:+ov,
+      updated_at:new Date().toISOString()}]);
     if(r){
       await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:$('pm-account').value.trim()}]);
       closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
@@ -3776,19 +4063,120 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   async emailPayslips(p){
     if(!this._payGuard())return;
-    const month=$(p+'pay-month').value||'';
+    const month=this._payMonthLabel(p);
     const withEmail=this._payCalc.filter(r=>r.email);
     const without=this._payCalc.filter(r=>!r.email);
     if(!withEmail.length)return toast('No staff have email addresses on file','err');
     if(!confirm('Send '+withEmail.length+' payslip(s) for '+month+'?\n\nEach person receives only their own payslip.'+(without.length?'\n\nNo email on file for: '+without.map(r=>r.name).join(', '):'')))return;
     showLoader('Sending payslips…');
-    const payload=withEmail.map(r=>({name:r.name,id:r.id,email:r.email,unit:r.unit||'',month,
-      basic:r.basic.toFixed(2),allowances:(r.taxA+r.nonTax).toFixed(2),gross:r.gross.toFixed(2),
-      ssnit:r.ssnitEmp.toFixed(2),tier3:r.tier3.toFixed(2),paye:r.paye.toFixed(2),net:r.net.toFixed(2)}));
+    const payload=[];
+    for(const r of withEmail){
+      payload.push({name:r.name,id:r.id,email:r.email,unit:r.unit||'',month,
+        net:r.net.toFixed(2),html:await this._payslipHTML(r,month)});
+    }
     const res=await API.gasPost({action:'sendPayslips',month,slips:payload});
     hideLoader();
     if(res&&res.success)toast('Payslips sent: '+res.sent+(res.failed?(' · failed: '+res.failed):'')+' ✓');
     else toast('Payslip sending failed'+(res&&res.error?': '+res.error:' — check the Apps Script deployment'),'err');
+  }
+  /* ── Payslip in THP format ── */
+  async _payslipHTML(r,month){
+    const f=v=>(+v||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const dash=v=>(+v)?f(v):'-';
+    let bank={};
+    try{const hf=await API.getHRFile(r.id);bank=hf||{};}catch(e){}
+    const s=this.staff[r.id]||{};
+    const row=(l,v)=>`<tr><td class="lbl">${l}</td><td class="cur">GH₵</td><td class="amt">${v}</td></tr>`;
+    return `<html><head><meta charset="UTF-8"><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#222;font-size:11px;margin:0;padding:16px}
+      .sheet{border:1px solid #bbb;padding:0 0 18px}
+      .top{background:#efefef;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start}
+      .org{font-size:13px;font-weight:bold;letter-spacing:.3px}
+      .addr{font-size:9px;font-style:italic;color:#444;margin-top:2px}
+      .mail{font-size:9px;color:#1155cc;text-decoration:underline}
+      .ptitle{font-size:22px;font-weight:bold;letter-spacing:6px;color:#555;text-align:right}
+      .bar{height:16px;background:#4a4a4a;margin-bottom:14px}
+      .pad{padding:0 18px}
+      .net{text-align:right;font-size:12px;font-weight:bold;margin-bottom:10px}
+      .net b{font-size:17px}
+      .cols{display:flex;gap:22px}
+      .col{flex:1}
+      table{width:100%;border-collapse:collapse}
+      .det td{border:1px solid #d5d5d5;padding:4px 7px;font-size:10px;background:#fafafa}
+      .det td.k{width:44%;color:#333}
+      .hd th{background:#efefef;border:1px solid #d5d5d5;padding:5px 7px;font-size:10.5px;font-weight:bold;text-align:left}
+      .hd th.r{text-align:right}
+      .ln td{border-bottom:1px solid #e8e8e8;padding:4px 7px;font-size:10px}
+      .ln td.lbl{font-style:italic}
+      .ln td.cur{width:34px;color:#555}
+      .ln td.amt{text-align:right;width:78px}
+      .tot td{padding:7px;font-size:11px;font-weight:bold;border-top:1px solid #999}
+      .tot td.amt{text-align:right}
+      .sig{display:flex;gap:22px;margin-top:34px;padding:0 18px}
+      .sig div{flex:1;font-size:10px;font-style:italic;font-weight:bold}
+      .sig span{display:inline-block;border-bottom:1px solid #777;width:58%;margin-left:6px}
+    </style></head><body><div class="sheet">
+      <div class="top">
+        <div><div class="org">THE HUNGER PROJECT – GHANA</div>
+          <div class="addr">PMB CT 7, Cantonments Accra, Ghana</div>
+          <div class="mail">email: thpghana@thp.org</div></div>
+        <div class="ptitle">PAYSLIP</div>
+      </div>
+      <div class="bar"></div>
+      <div class="pad">
+        <div class="net">Net Pay: &nbsp; GH₵ &nbsp; <b>${f(r.net)}</b></div>
+        <div class="cols">
+          <div class="col"><table class="det">
+            <tr><td class="k">Employee Name :</td><td>${r.name}</td></tr>
+            <tr><td class="k">Employee ID :</td><td>${r.id}</td></tr>
+            <tr><td class="k">E-mail ID</td><td>${r.email||''}</td></tr>
+            <tr><td class="k">Contact No :</td><td>${bank.phone||s.phone||''}</td></tr>
+          </table></div>
+          <div class="col"><table class="det">
+            <tr><td class="k">Department :</td><td>${r.unit||''}</td></tr>
+            <tr><td class="k">Designation :</td><td>${r.designation||''}</td></tr>
+            <tr><td class="k">Bank Account No.</td><td>${bank.bank_account||''}</td></tr>
+            <tr><td class="k">Pay Period:</td><td>${month}</td></tr>
+          </table></div>
+        </div>
+        <div class="cols" style="margin-top:16px">
+          <div class="col"><table>
+            <tr class="hd"><th>EARNINGS</th><th></th><th class="r">AMOUNT</th></tr>
+            ${row('Basic Salary',f(r.basic))}${row('Arrears',dash(r.arrears))}${row('Incentives',dash(r.incent))}
+            ${row('Bonus',dash(r.bonus))}${row('Over Time Pay',dash(r.ot))}${row('Fuel Allowance',dash(r.fuel))}
+            ${r.taxA+r.nonTax>0?row('Other Allowances',f(r.taxA+r.nonTax)):''}
+          </table></div>
+          <div class="col"><table>
+            <tr class="hd"><th>DEDUCTIONS</th><th></th><th class="r">AMOUNT</th></tr>
+            ${row('Provident Fund',dash(r.tier3))}${row('SSNIT',f(r.ssnitEmp))}${row('PAYE',f(r.paye))}
+            ${row('Salary Advance',dash(r.advance))}${row('UG Credit',dash(r.ug))}${row('Others Deductions',dash(r.other))}
+          </table></div>
+        </div>
+        <div class="cols" style="margin-top:20px">
+          <div class="col"><table><tr class="tot"><td>Gross Salary</td><td>GH₵</td><td class="amt">${f(r.gross)}</td></tr></table></div>
+          <div class="col"><table>
+            <tr class="tot"><td>Total Deductions</td><td>GH₵</td><td class="amt">${f(r.totalDed)}</td></tr>
+            <tr class="tot"><td style="text-align:right">NET Salary</td><td>GH₵</td><td class="amt">${f(r.net)}</td></tr>
+          </table></div>
+        </div>
+      </div>
+      <div class="sig"><div>Employee Signature :<span></span></div><div>Employer Signature :<span></span></div></div>
+    </div></body></html>`;
+  }
+  async previewPayslip(p){
+    if(!this._payGuard())return;
+    const month=this._payMonthLabel(p);
+    const r=this._payCalc[0];
+    const html=await this._payslipHTML(r,month);
+    const w=window.open('','_blank');
+    w.document.write(html+'<div style="text-align:center;padding:14px" class="no-print"><button onclick="window.print()" style="padding:9px 24px;background:#2D3592;color:#fff;border:0;border-radius:8px;font-weight:600;cursor:pointer">🖨 Print / Save as PDF</button></div>');
+    w.document.close();
+    toast('Showing payslip for '+r.name+' — use Print to save as PDF','info');
+  }
+  _payMonthLabel(p){
+    const v=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
+    const d=new Date(v+'-01');
+    return d.toLocaleString('en',{month:'short'})+'-'+d.getFullYear();
   }
   async savePayrollRun(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing calculated yet','err');
