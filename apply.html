@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apply — The Hunger Project Ghana</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#2D3592;--teal:#3DBFB8;--gold:#F5A623;--bg:#f0f4ff;--surf:#fff;
+  --text:#1e293b;--text2:#64748b;--text3:#94a3b8;--border:#e2e8f0;--red:#dc2626;--green:#16a34a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.55;padding:1.2rem}
+.wrap{max-width:660px;margin:0 auto}
+.hdr{background:linear-gradient(145deg,#1a2070,#2D3592 55%,#0d1340);border-radius:18px 18px 0 0;
+  padding:2rem 2rem 1.6rem;color:#fff;text-align:center}
+.hdr img{width:66px;border-radius:10px;margin-bottom:.9rem}
+.hdr .tag{color:var(--teal);font-size:.78rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.hdr h1{font-family:'Playfair Display',serif;font-size:1.7rem;margin:.35rem 0 .3rem}
+.hdr p{font-size:.85rem;opacity:.82}
+.card{background:var(--surf);border-radius:0 0 18px 18px;padding:1.8rem 2rem 2rem;
+  box-shadow:0 12px 40px rgba(45,53,146,.12)}
+.field{margin-bottom:1rem}
+label{display:block;font-size:.78rem;font-weight:600;color:var(--text2);margin-bottom:.3rem}
+label .req{color:var(--red)}
+input,select,textarea{width:100%;padding:.65rem .8rem;border:1px solid var(--border);border-radius:10px;
+  font-family:inherit;font-size:.9rem;background:#f8faff;color:var(--text)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy);background:#fff}
+.row{display:flex;gap:.8rem;flex-wrap:wrap}
+.row .field{flex:1;min-width:200px}
+.vac-note{background:#f8faff;border:1px solid var(--border);border-left:4px solid var(--teal);
+  border-radius:10px;padding:.8rem 1rem;font-size:.82rem;color:var(--text2);margin-bottom:1rem;display:none}
+.vac-note strong{color:var(--text);display:block;margin-bottom:.2rem}
+button{width:100%;padding:.85rem;border:0;border-radius:12px;background:linear-gradient(135deg,#2D3592,#4B5DE4);
+  color:#fff;font-family:inherit;font-size:.95rem;font-weight:700;cursor:pointer;transition:opacity .2s}
+button:hover{opacity:.92}
+button:disabled{opacity:.55;cursor:not-allowed}
+.msg{margin-top:.9rem;font-size:.85rem;min-height:20px;text-align:center}
+.ok{text-align:center;padding:2rem 1rem}
+.ok .tick{font-size:3rem}
+.ok h2{font-size:1.25rem;margin:.5rem 0 .4rem;color:var(--green)}
+.ok p{font-size:.88rem;color:var(--text2)}
+.foot{text-align:center;font-size:.72rem;color:var(--text3);margin-top:1.2rem;line-height:1.7}
+.hint{font-size:.72rem;color:var(--text3);margin-top:.25rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="tag">A world without hunger</div>
+    <h1>Join Our Team</h1>
+    <p>The Hunger Project — Ghana</p>
+  </div>
+  <div class="card" id="card">
+    <div id="form-area">
+      <div class="field">
+        <label>Position applying for <span class="req">*</span></label>
+        <select id="vacancy"><option value="">Loading open positions…</option></select>
+      </div>
+      <div class="vac-note" id="vac-note"></div>
+      <div class="row">
+        <div class="field"><label>Full Name <span class="req">*</span></label><input type="text" id="name" placeholder="e.g. Ama Mensah"></div>
+        <div class="field"><label>Phone <span class="req">*</span></label><input type="tel" id="phone" placeholder="e.g. 024 123 4567"></div>
+      </div>
+      <div class="field"><label>Email Address <span class="req">*</span></label><input type="email" id="email" placeholder="you@example.com"></div>
+      <div class="field">
+        <label>Curriculum Vitae (CV) <span class="req">*</span></label>
+        <input type="file" id="cv" accept=".pdf,.doc,.docx">
+        <div class="hint">PDF or Word document, maximum 5 MB.</div>
+      </div>
+      <div class="field"><label>Cover Note</label><textarea id="note" rows="4" placeholder="Briefly tell us why you are a good fit for this role."></textarea></div>
+      <button id="btn" onclick="submitApp()">Submit Application</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <div class="foot">
+    The Hunger Project — Ghana · PMB CT 7, Cantonments, Accra<br>
+    Your details are used solely to assess this application.
+  </div>
+</div>
+
+<script>
+const SB_URL='https://jhpqzkwzxprsnaczkyjq.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpocHF6a3d6eHByc25hY3preWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTE4NTMsImV4cCI6MjA4OTc2Nzg1M30.GKJz9EhxGP1wTQBiufLoVLxWOstx-9Z0MPWHxj2c8VM';
+const GAS_URL='https://script.google.com/macros/s/AKfycbxYjyPS7HHfVCheKSUi-gYm_a02tpxhz4aleReROhkvE8Zv3dFxdkKAJzH16gHcIsD77g/exec';
+const $=id=>document.getElementById(id);
+let VACS=[];
+
+function sbHeaders(){return{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};}
+
+async function loadVacancies(){
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/recruitment_vacancies?select=*&order=created_at.desc',{headers:sbHeaders()});
+    const all=await r.json();
+    const today=new Date().toISOString().slice(0,10);
+    VACS=(all||[]).filter(v=>['Open','Interviewing'].includes(v.status)&&(!v.closing_date||String(v.closing_date).slice(0,10)>=today));
+    const sel=$('vacancy');
+    if(!VACS.length){
+      sel.innerHTML='<option value="">No open positions at this time</option>';
+      $('btn').disabled=true;
+      $('msg').innerHTML='<span style="color:var(--text2)">There are currently no vacancies open. Please check back later.</span>';
+      return;
+    }
+    sel.innerHTML='<option value="">— Select a position —</option>'+
+      VACS.map(v=>`<option value="${v.id}">${v.position}${v.unit?' — '+v.unit:''}</option>`).join('');
+    sel.onchange=showVac;
+  }catch(e){
+    $('vacancy').innerHTML='<option value="">Could not load positions</option>';
+    $('msg').innerHTML='<span style="color:var(--red)">Unable to load open positions. Please refresh.</span>';
+  }
+}
+function showVac(){
+  const v=VACS.find(x=>x.id===$('vacancy').value);
+  const n=$('vac-note');
+  if(!v){n.style.display='none';return;}
+  n.style.display='block';
+  n.innerHTML='<strong>'+v.position+'</strong>'+
+    (v.employ_type?v.employ_type:'')+(v.openings>1?' · '+v.openings+' openings':'')+
+    (v.closing_date?' · Closes '+String(v.closing_date).slice(0,10):'')+
+    (v.description?'<br><br>'+v.description:'');
+}
+function toBase64(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+}
+function uid(){return 'APP'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+async function submitApp(){
+  const vacId=$('vacancy').value, name=$('name').value.trim(), email=$('email').value.trim(),
+        phone=$('phone').value.trim(), note=$('note').value.trim(), file=$('cv').files[0];
+  const msg=$('msg');
+  if(!vacId) return msg.innerHTML='<span style="color:var(--red)">Please select a position.</span>';
+  if(!name)  return msg.innerHTML='<span style="color:var(--red)">Please enter your full name.</span>';
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)) return msg.innerHTML='<span style="color:var(--red)">Please enter a valid email address.</span>';
+  if(!phone) return msg.innerHTML='<span style="color:var(--red)">Please enter your phone number.</span>';
+  if(!file)  return msg.innerHTML='<span style="color:var(--red)">Please attach your CV.</span>';
+  if(file.size>5*1024*1024) return msg.innerHTML='<span style="color:var(--red)">CV is larger than 5 MB.</span>';
+
+  $('btn').disabled=true;
+  msg.innerHTML='<span style="color:var(--navy)">⏳ Uploading your CV… this can take up to a minute.</span>';
+  try{
+    const b64=await toBase64(file);
+    const safe=name.replace(/[^a-z0-9]/gi,'_');
+    const up=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},redirect:'follow',
+      body:JSON.stringify({action:'uploadHRDoc',staffId:'APPLICANT_'+safe,fileName:file.name,fileData:b64,mimeType:file.type})});
+    const upRes=await up.json();
+    if(!upRes||!upRes.success||!upRes.fileUrl) throw new Error('CV upload failed');
+
+    msg.innerHTML='<span style="color:var(--navy)">⏳ Submitting your application…</span>';
+    const ins=await fetch(SB_URL+'/rest/v1/recruitment_applicants',{method:'POST',headers:sbHeaders(),
+      body:JSON.stringify([{id:uid(),vacancy_id:vacId,name,email,phone,stage:'Applied',rating:0,
+        cv_url:upRes.fileUrl,notes:note,applied_date:new Date().toISOString().slice(0,10),
+        updated_at:new Date().toISOString()}])});
+    if(!ins.ok) throw new Error('Could not save application');
+
+    const vac=VACS.find(v=>v.id===vacId);
+    fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},redirect:'follow',
+      body:JSON.stringify({action:'applyNotify',name,email,phone,position:vac?vac.position:'',cvUrl:upRes.fileUrl,note})}).catch(()=>{});
+
+    $('card').innerHTML='<div class="ok"><div class="tick">✅</div><h2>Application Received</h2>'+
+      '<p>Thank you, '+name.split(' ')[0]+'. Your application for <strong>'+(vac?vac.position:'the role')+'</strong> has been submitted successfully.'+
+      '<br><br>A confirmation has been sent to <strong>'+email+'</strong>. Our HR team will be in touch if you are shortlisted.</p></div>';
+  }catch(e){
+    $('btn').disabled=false;
+    msg.innerHTML='<span style="color:var(--red)">Sorry, something went wrong. Please try again, or email your CV to thpghana@thp.org.</span>';
+  }
+}
+loadVacancies();
+</script>
+</body>
+</html>
