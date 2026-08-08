@@ -589,7 +589,11 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 @media(max-width:768px){
   .mob-nav{display:block;}
   .topbar{display:none!important;}
-  .sidebar{display:none!important;}
+  /* Sidebar becomes a slide-in drawer, opened by the ☰ button */
+  .sidebar{display:flex!important;position:fixed;top:0;left:0;bottom:0;width:82vw;max-width:310px;
+    z-index:400;transform:translateX(-100%);transition:transform .26s ease;overflow-y:auto;
+    box-shadow:6px 0 26px rgba(0,0,0,.3);padding-top:1rem;}
+  .sidebar.open{transform:translateX(0);}
   /* mob-nav header ~52px + tabs ~46px = ~98px — add a little breathing room */
   .main{
     margin-left:0 !important;
@@ -796,3 +800,19 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 .kpi-row input.ks{flex:2;min-width:130px}
 .kpi-row input.kr{width:64px}
 .kpa-avg{font-size:.74rem;color:var(--text2);margin-top:.3rem}
+/* Mobile: hidden-by-privilege tabs must stay hidden */
+@media(max-width:768px){
+  .mob-tab.hr-tab,.mob-tab.cases-tab,.mob-tab.payroll-tab,.mob-tab.contract-tab{display:none!important;}
+  .mob-tabs{padding-right:.4rem;}
+  .mob-tabs::after{content:'';flex:0 0 .6rem;}
+}
+
+/* Mobile drawer button + backdrop */
+.mob-menu-btn{display:none;background:var(--surf2);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;font-size:1.05rem;line-height:1;padding:.34rem .6rem;cursor:pointer;flex-shrink:0}
+#sb-backdrop{display:none;position:fixed;inset:0;background:rgba(8,12,22,.5);z-index:399}
+#sb-backdrop.on{display:block}
+@media(max-width:768px){
+  .mob-menu-btn{display:inline-block}
+  .sidebar .nav-grp-body .nav-item{padding-left:1.4rem}
+}
