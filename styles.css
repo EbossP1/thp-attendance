@@ -816,3 +816,10 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
   .mob-menu-btn{display:inline-block}
   .sidebar .nav-grp-body .nav-item{padding-left:1.4rem}
 }
+/* Wider screens: sidebar is the only navigation — never show the mobile strip */
+@media(min-width:769px){
+  .mob-nav{display:none!important;}
+  .mob-menu-btn{display:none!important;}
+  #sb-backdrop{display:none!important;}
+  .main{padding-top:1.5rem!important;}
+}
