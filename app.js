@@ -2219,7 +2219,137 @@ class App{
     return days;
   }
   clearMgrRepDates(){if($('mgr-rep-from'))$('mgr-rep-from').value='';if($('mgr-rep-to'))$('mgr-rep-to').value='';if($('mgr-rep-staff'))$('mgr-rep-staff').value='';this.renderMgrReport();}
+  /* ── Multi-area reporting hub ── */
+  async _renderOtherReport(type){
+    const hdr=$('m-report-hdr'),body=$('m-report-body'),sub=$('m-report-sub');
+    if(!hdr||!body)return;
+    body.innerHTML='<tr><td colspan="9" style="color:var(--text3)">Loading…</td></tr>';
+    const q=this._mgrRepStaffSearch();
+    const staffList=Object.entries(this.staff).filter(([i,st])=>st.role!=='admin')
+      .filter(([i,st])=>!q||i.toLowerCase().includes(q)||(st.name||'').toLowerCase().includes(q))
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    const H=cols=>hdr.innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+    const none=n=>body.innerHTML=`<tr><td colspan="${n}"><div class="empty"><div class="empty-ico">📭</div>No records</div></td></tr>`;
+    const titles={leave:'Leave Register',contracts:'Contract Status',staffdir:'Staff Directory',
+      hrfiles:'Staff File Completeness',training:'Training & Capacity Building',appraisal:'Performance Appraisals',
+      recruit:'Recruitment Pipeline',demographics:'Headcount & Demographics'};
+    if(sub)sub.textContent=titles[type]||'';
+
+    if(type==='leave'){
+      H(['Staff','Unit','Type','Start','End','Days','Supervisor','Final','Status']);
+      let rows=this.leave.slice();
+      const from=$('mgr-rep-from')?.value,to=$('mgr-rep-to')?.value;
+      if(from)rows=rows.filter(l=>String(l.endDate).slice(0,10)>=from);
+      if(to)rows=rows.filter(l=>String(l.startDate).slice(0,10)<=to);
+      if(q)rows=rows.filter(l=>(l.name||'').toLowerCase().includes(q)||(l.staffId||'').toLowerCase().includes(q));
+      if(!rows.length)return none(9);
+      rows.sort((a,b)=>String(b.startDate).localeCompare(String(a.startDate)));
+      body.innerHTML=rows.map(l=>`<tr><td><strong>${l.name}</strong></td><td>${l.unit||''}</td><td>${l.type}</td>
+        <td>${fmtISO(l.startDate)}</td><td>${fmtISO(l.endDate)}</td><td>${l.days}</td>
+        <td style="font-size:.74rem">${l.supervisorStatus||''}</td><td style="font-size:.74rem">${l.finalApproverStatus||l.hrStatus||''}</td>
+        <td>${_bdg(l.status)}</td></tr>`).join('');
+      return;
+    }
+    if(type==='contracts'){
+      H(['Staff','Unit','Start','End','Days Left','Status']);
+      const rows=staffList.map(([i,st])=>({i,st,f:this._contractFlag(st.contractEnd)}))
+        .sort((a,b)=>(a.f.days??99999)-(b.f.days??99999));
+      if(!rows.length)return none(6);
+      body.innerHTML=rows.map(r=>`<tr><td><strong>${r.st.name}</strong><br><span style="font-size:.7rem;color:var(--text3)">${r.i}</span></td>
+        <td>${r.st.unit||'—'}</td><td>${r.st.contractStart?fmtISO(r.st.contractStart):'—'}</td>
+        <td>${r.st.contractEnd?fmtISO(r.st.contractEnd):'—'}</td><td>${r.f.days??'—'}</td>
+        <td><span class="c-flag ${r.f.cls}">${r.f.label}</span></td></tr>`).join('');
+      return;
+    }
+    if(type==='staffdir'){
+      H(['Staff ID','Name','Unit','Role','Email','Phone','Supervisor']);
+      if(!staffList.length)return none(7);
+      body.innerHTML=staffList.map(([i,st])=>`<tr><td style="font-size:.76rem">${i}</td><td><strong>${st.name}</strong></td>
+        <td>${st.unit||'—'}</td><td>${roleLabel(st.role)}</td><td style="font-size:.74rem">${st.email||'—'}</td>
+        <td style="font-size:.74rem">${st.phone||'—'}</td><td style="font-size:.74rem">${this._sName(st.supervisor)||'—'}</td></tr>`).join('');
+      return;
+    }
+    if(type==='hrfiles'){
+      H(['Staff','Unit','DOB','Phone','Next of Kin','SSNIT','File Status']);
+      const files=await API.getAllHRFiles();const fm={};files.forEach(f=>fm[f.staff_id]=f);
+      if(!staffList.length)return none(7);
+      body.innerHTML=staffList.map(([i,st])=>{
+        const f=fm[i]||{};const n=[f.dob,f.phone,f.next_of_kin,f.ssnit_number].filter(v=>v&&String(v).trim()).length;
+        const flag=!fm[i]?'<span class="c-flag none">No file</span>':n>=4?'<span class="c-flag green">Complete</span>':n>=2?'<span class="c-flag amber">Partial ('+n+'/4)</span>':'<span class="c-flag red">Started</span>';
+        const tick=v=>v&&String(v).trim()?'✓':'—';
+        return `<tr><td><strong>${st.name}</strong></td><td>${st.unit||'—'}</td><td>${tick(f.dob)}</td>
+          <td>${tick(f.phone)}</td><td>${tick(f.next_of_kin)}</td><td>${tick(f.ssnit_number)}</td><td>${flag}</td></tr>`;}).join('');
+      return;
+    }
+    if(type==='training'){
+      H(['Staff','Course','Provider','Completed','Expiry','Status']);
+      const rows=await API._get('training_records','order=completed_date.desc.nullslast&limit=400')||[];
+      const f=q?rows.filter(r=>(this._sName(r.staff_id)||'').toLowerCase().includes(q)):rows;
+      if(!f.length)return none(6);
+      const today=new Date().toISOString().slice(0,10);
+      body.innerHTML=f.map(r=>{
+        const exp=r.expiry_date?String(r.expiry_date).slice(0,10):'';
+        const st=exp?(exp<today?'<span class="c-flag red">Expired</span>':'<span class="c-flag green">Valid</span>'):'<span class="c-flag none">—</span>';
+        return `<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td>${r.course||''}</td><td>${r.provider||'—'}</td>
+          <td>${r.completed_date?String(r.completed_date).slice(0,10):'—'}</td><td>${exp||'—'}</td><td>${st}</td></tr>`;}).join('');
+      return;
+    }
+    if(type==='appraisal'){
+      H(['Staff','Period','Type','Supervisor','Score','Rating','Status']);
+      const rows=await API._get('performance_appraisals','order=review_date.desc.nullslast&limit=300')||[];
+      const f=q?rows.filter(r=>(this._sName(r.staff_id)||'').toLowerCase().includes(q)):rows;
+      if(!f.length)return none(7);
+      body.innerHTML=f.map(r=>{const sc=(+r.final_score||0);
+        return `<tr><td><strong>${this._sName(r.staff_id)}</strong></td><td>${r.period||'—'}</td><td>${r.review_type||''}</td>
+          <td style="font-size:.76rem">${this._sName(r.line_manager)||'—'}</td><td><strong>${sc.toFixed(2)}</strong>/5</td>
+          <td>${this._ratingWord(sc)}</td><td><span class="c-flag ${r.status==='Closed'||r.status==='Acknowledged'?'green':'amber'}">${r.status||'Draft'}</span></td></tr>`;}).join('');
+      return;
+    }
+    if(type==='recruit'){
+      H(['Candidate','Position','Contact','Stage','Rating','Applied']);
+      const vacs=await API._get('recruitment_vacancies','select=id,position')||[];
+      const vm={};vacs.forEach(v=>vm[v.id]=v.position);
+      const rows=await API._get('recruitment_applicants','order=applied_date.desc.nullslast&limit=400')||[];
+      const f=q?rows.filter(r=>(r.name||'').toLowerCase().includes(q)):rows;
+      if(!f.length)return none(6);
+      body.innerHTML=f.map(r=>`<tr><td><strong>${r.name}</strong></td><td>${vm[r.vacancy_id]||'—'}</td>
+        <td style="font-size:.74rem">${r.email||''}<br>${r.phone||''}</td><td>${this._rcStageFlag(r.stage)}</td>
+        <td>${this._stars(r.rating)}</td><td style="font-size:.76rem">${r.applied_date?String(r.applied_date).slice(0,10):'—'}</td></tr>`).join('');
+      return;
+    }
+    if(type==='demographics'){
+      H(['Category','Item','Count','Share']);
+      const tot=staffList.length;
+      const rows=[];
+      const add=(cat,item,n)=>rows.push(`<tr><td style="color:var(--text3);font-size:.74rem">${cat}</td><td><strong>${item}</strong></td><td>${n}</td><td>${tot?Math.round(n/tot*100):0}%</td></tr>`);
+      add('Overall','Total Staff',tot);
+      add('Gender','Female',staffList.filter(([i,s])=>s.gender==='female').length);
+      add('Gender','Male',staffList.filter(([i,s])=>(s.gender||'male')==='male').length);
+      const uc={};staffList.forEach(([i,s])=>{const u=(s.unit||'Unassigned').trim();uc[u]=(uc[u]||0)+1;});
+      Object.entries(uc).sort((a,b)=>b[1]-a[1]).forEach(([u,n])=>add('Unit',u,n));
+      const ec={};staffList.forEach(([i,s])=>{const t=this._empType(s.unit);ec[t]=(ec[t]||0)+1;});
+      Object.entries(ec).forEach(([t,n])=>add('Employment',t,n));
+      const rc={};staffList.forEach(([i,s])=>{const r=roleLabel(s.role);rc[r]=(rc[r]||0)+1;});
+      Object.entries(rc).forEach(([r,n])=>add('Role',r,n));
+      add('Contracts','Expiring / expired (≤30d)',staffList.filter(([i,s])=>this._contractFlag(s.contractEnd).cls==='red').length);
+      add('Contracts','No end date on file',staffList.filter(([i,s])=>!s.contractEnd).length);
+      body.innerHTML=rows.join('');
+      return;
+    }
+  }
+  exportReportCSV(){
+    const tbl=$('m-report-table');if(!tbl)return toast('Nothing to export','err');
+    let csv='';
+    tbl.querySelectorAll('tr').forEach(tr=>{
+      const cells=[...tr.querySelectorAll('th,td')].map(td=>'"'+td.innerText.replace(/\s+/g,' ').trim().replace(/"/g,'""')+'"');
+      if(cells.length)csv+=cells.join(',')+'\n';
+    });
+    const t=$('mgr-rep-type')?.value||'report';
+    this._dl(csv,'THP_'+t+'_'+Date.now()+'.csv','text/csv');
+  }
   renderMgrReport(){
+    const _rt=$('mgr-rep-type')?.value||'attendance';
+    if(_rt!=='attendance'){this._renderOtherReport(_rt);return;}
     const isHR=this.user.id===HR_MANAGER_ID;
     const isFinance=this.user.id==='THPG/05/2025';
     const hdr=$('m-report-hdr'),body=$('m-report-body');if(!hdr||!body)return;
@@ -3218,11 +3348,11 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   initAssistant(){
     if(!this._aiHist){
       this._aiHist=[];
-      this._aiSay('bot','Hello '+(this.user.name||'').split(' ')[0]+" — ask me about staff, attendance, leave, contracts or birthdays.\nTry one of the suggestions below.");
+      this._aiSay('bot','Hello '+(this.user.name||'').split(' ')[0]+" — ask me about staff, attendance, leave, contracts, birthdays or a specific person.");
     }
-    const chips=['How many staff do we have?','Who is on leave today?','Whose contract expires soon?','Birthdays this month','Who has not clocked in today?','Staff files still incomplete','Gender and unit breakdown','Pending leave requests'];
+    // Suggestion chips hidden — the assistant still answers these when typed.
     const c=$('ai-chips');
-    if(c)c.innerHTML=chips.map(t=>`<span class="ai-chip" onclick="APP.askAssistant('${t.replace(/'/g,"\\'")}')">${t}</span>`).join('');
+    if(c){c.innerHTML='';c.style.display='none';}
   }
   clearAssistant(){this._aiHist=null;const c=$('ai-chat');if(c)c.innerHTML='';this.initAssistant();}
   _aiSay(who,text){
