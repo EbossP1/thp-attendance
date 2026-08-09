@@ -601,10 +601,21 @@
               </div>
               <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
                 <span>🔍</span><input class="fi" type="text" id="mgr-rep-staff" placeholder="Staff ID or Name…" oninput="APP.renderMgrReport()" style="width:160px">
+                <select class="fi" id="mgr-rep-type" onchange="APP.renderMgrReport()" style="width:170px" title="Report type">
+                  <option value="attendance">📋 Attendance</option>
+                  <option value="leave">🌴 Leave Register</option>
+                  <option value="contracts">📄 Contracts</option>
+                  <option value="staffdir">👥 Staff Directory</option>
+                  <option value="hrfiles">🗂 Staff File Status</option>
+                  <option value="training">🎓 Training</option>
+                  <option value="appraisal">📊 Appraisals</option>
+                  <option value="recruit">🧑‍💼 Recruitment</option>
+                  <option value="demographics">📈 Headcount &amp; Demographics</option>
+                </select>
                 <select class="fi" id="mgr-rep-mode" onchange="APP.renderMgrReport()" style="width:150px" title="Attendance summary view"><option value="daily">Daily Register</option><option value="summary">Days Summary</option></select>
                 <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="$('mgr-rep-staff').value='';APP.renderMgrReport()">✕</button>
               </div>
-              <button class="bsm bsm-navy" onclick="APP.exportMgrReport()">📊 CSV</button>
+              <button class="bsm bsm-navy" onclick="(($('mgr-rep-type')?.value||'attendance')==='attendance')?APP.exportMgrReport():APP.exportReportCSV()">📊 CSV</button>
               <button class="bsm" style="background:linear-gradient(135deg,#2D3592,#1e40af);color:#fff" onclick="APP.exportMgrWord()">📄 Word</button>
               <button class="bsm" style="background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff" onclick="APP.exportMgrPDF()">📕 PDF</button>
               <button class="bsm bsm-gold" onclick="APP.printMgrReport()">🖨 Print</button>
