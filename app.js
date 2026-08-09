@@ -108,6 +108,22 @@ function showView(id){
   if(id==='manager-view' &&$('mob-nav-mgr'))   $('mob-nav-mgr').style.display='block';
   if(id==='admin-view'   &&$('mob-nav-admin')) $('mob-nav-admin').style.display='block';
 }
+/* Belt-and-braces: the mobile tab strip must never show on wide screens,
+   even if a cached stylesheet is being served. */
+function _syncNavForWidth(){
+  const wide=window.innerWidth>768;
+  document.querySelectorAll('.mob-nav').forEach(n=>{n.style.display=wide?'none':'';});
+  document.querySelectorAll('.mob-menu-btn').forEach(b=>{b.style.display=wide?'none':'';});
+  if(wide){
+    document.querySelectorAll('.sidebar.open').forEach(e=>e.classList.remove('open'));
+    const bd=document.getElementById('sb-backdrop');if(bd)bd.classList.remove('on');
+  }
+}
+window.addEventListener('resize',_syncNavForWidth);
+window.addEventListener('orientationchange',()=>setTimeout(_syncNavForWidth,120));
+document.addEventListener('DOMContentLoaded',_syncNavForWidth);
+setTimeout(_syncNavForWidth,300);
+
 function toggleNavGroup(id){
   const g=document.getElementById(id);if(!g)return;
   const h=g.querySelector('.nav-grp-hdr'),b=g.querySelector('.nav-grp-body');
@@ -133,6 +149,7 @@ function _hideEmptyNavGroups(){
   });
 }
 function showPanel(id,sbId,e){
+  _syncNavForWidth();
   if(window.innerWidth<=768)setTimeout(closeAllSB,80);
   $(sbId).nextElementSibling.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   $(id).classList.add('active');
