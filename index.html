@@ -306,7 +306,6 @@
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('st-')">📊 CSV</button>
             <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('st-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('st-')">🏛 Statutory</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('st-')">📌 Allocation</button>
             <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('st-')">🧾 Preview Payslip</button>
             <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
@@ -814,7 +813,6 @@
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('m-')">📊 CSV</button>
             <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('m-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('m-')">🏛 Statutory</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff" onclick="APP.exportAllocation('m-')">📌 Allocation</button>
             <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('m-')">🧾 Preview Payslip</button>
             <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')">📧 Email Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
@@ -1477,7 +1475,12 @@
     <div class="field"><label>Grade</label><select id="pm-grade" class="fi"><option value="junior">Junior</option><option value="senior">Senior</option></select></div>
     <div class="form-row" style="gap:.5rem">
       <div class="field"><label>Bank Name</label><input type="text" id="pm-bank"></div>
-      <div class="field"><label>Bank Account</label><input type="text" id="pm-account"></div>
+      <div class="field"><label>Bank Account</label>
+        <div style="display:flex;gap:.4rem">
+          <input type="text" id="pm-account" style="flex:1" autocomplete="off">
+          <button class="bsm" id="pm-acct-btn" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border);display:none" onclick="APP.editBankAcct()">✏ Change</button>
+        </div>
+      </div>
     </div>
     <div class="field"><label>Allowances — one per line: Name : Amount : t (taxable) or n</label><textarea id="pm-allow" rows="3" placeholder="Transport : 400 : t&#10;Data bundle : 150 : n"></textarea></div>
     <div class="field"><label>Designation (shown on payslip)</label><input type="text" id="pm-designation" placeholder="e.g. Transport Officer"></div>
@@ -1498,7 +1501,7 @@
       <div class="field" style="flex:1;min-width:120px"><label>Others</label><input type="number" step="0.01" id="pm-other" value="0"></div>
     </div>
     <div class="field"><label>PAYE Override (leave blank to use the calculated figure)</label><input type="number" step="0.01" id="pm-paye-ov" placeholder="calculated automatically"></div>
-    <div class="field"><label>Grant / Project Allocation — one per line: Project : %</label><textarea id="pm-alloc" rows="2" placeholder="Grant A : 60&#10;Core : 40"></textarea></div>
+    <div class="field" style="display:none"><label>Grant / Project Allocation — one per line: Project : %</label><textarea id="pm-alloc" rows="2"></textarea></div>
     <input type="hidden" id="pm-id"><div id="pm-msg" style="font-size:.8rem;min-height:16px"></div>
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('pay-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.savePayStaff()">💾 Save</button></div>
   </div>
