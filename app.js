@@ -4033,6 +4033,19 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   /* ── Payroll (Finance: Ernest + Emmanuel; settings-driven) ── */
   _payDefaults(){return{ssnitEmployeePct:5.5,ssnitEmployerPct:13,ssnitCeilingMonthly:69000,tier3MaxPct:16.5,extraReliefPct:5,
     bands:[{w:490,r:0},{w:110,r:.05},{w:130,r:.1},{w:3166.67,r:.175},{w:16000,r:.25},{w:30520,r:.3},{w:null,r:.35}]};}
+  _maskAcct(v){
+    const t=String(v||'').replace(/\s+/g,'');
+    if(!t)return '';
+    if(t.length<=6)return '•'.repeat(Math.max(4,t.length));           // too short to reveal safely
+    if(t.length<=9)return t.slice(0,2)+'•'.repeat(t.length-5)+t.slice(-3);
+    return t.slice(0,3)+'•'.repeat(t.length-6)+t.slice(-3);            // e.g. 210•••••••118
+  }
+  editBankAcct(){
+    const el=$('pm-account');if(!el)return;
+    el.value='';el.readOnly=false;el.placeholder='Enter the full account number';el.focus();
+    this._acctMasked=false;
+    const b=$('pm-acct-btn');if(b)b.style.display='none';
+  }
   _ghs(n){return 'GH₵ '+(Number(n)||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});}
   async _loadPaySettings(){
     if(this._payS)return this._payS;
@@ -4117,7 +4130,16 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('pm-tier3').value=ps?.tier3_pct||0;
     $('pm-grade').value=ps?.grade||'junior';
     $('pm-bank').value='';$('pm-account').value='';
-    API.getHRFile(id).then(hf=>{if($('pm-id').value===id){$('pm-bank').value=hf?.bank_name||'';$('pm-account').value=hf?.bank_account||'';}});
+    this._acctMasked=false;this._acctReal='';
+    API.getHRFile(id).then(hf=>{
+      if($('pm-id').value!==id)return;
+      $('pm-bank').value=hf?.bank_name||'';
+      const acct=hf?.bank_account||'';
+      this._acctReal=acct;
+      const el=$('pm-account'),btn=$('pm-acct-btn');
+      if(acct){el.value=this._maskAcct(acct);el.readOnly=true;this._acctMasked=true;if(btn)btn.style.display='inline-block';}
+      else{el.value='';el.readOnly=false;this._acctMasked=false;if(btn)btn.style.display='none';}
+    });
     $('pm-allow').value=allow.map(a=>`${a.n} : ${a.a} : ${a.tax?'t':'n'}`).join('\n');
     $('pm-designation').value=ps?.designation||'';
     ['arrears','incentives','bonus','overtime','fuel','advance','ug','other'].forEach(k=>{
@@ -4150,7 +4172,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       paye_override:ov===''?null:+ov,
       updated_at:new Date().toISOString()}]);
     if(r){
-      await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:$('pm-account').value.trim()}]);
+      const acctVal=this._acctMasked?this._acctReal:$('pm-account').value.trim();
+      await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:acctVal}]);
       closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
     }
     else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
@@ -4290,7 +4313,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
           <div class="col"><table class="det">
             <tr><td class="k">Department :</td><td>${r.unit||''}</td></tr>
             <tr><td class="k">Designation :</td><td>${r.designation||''}</td></tr>
-            <tr><td class="k">Bank Account No.</td><td>${bank.bank_account||''}</td></tr>
+            <tr><td class="k">Bank Account No.</td><td>${this._maskAcct(bank.bank_account)}</td></tr>
             <tr><td class="k">Pay Period:</td><td>${month}</td></tr>
           </table></div>
         </div>
