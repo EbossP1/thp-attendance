@@ -4363,58 +4363,6 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(r){this.audit('Payroll run saved','Payroll',month,this._payCalc.length+' staff');toast('Payroll run for '+month+' saved ✓');}else toast('Save failed','err');
   }
   /* ── Payroll Phase B: bank advice, statutory returns, payslips ── */
-  async _payWithBank(){
-    const files=await API._get('hr_staff_files','select=staff_id,bank_name,bank_account')||[];
-    const bm={};files.forEach(f=>bm[f.staff_id]=f);
-    return (this._payCalc||[]).map(r=>({...r,bank:bm[r.id]?.bank_name||'',account:bm[r.id]?.bank_account||''}));
-  }
-  async exportBankAdvice(p){
-    if(!this._payCalc?.length)return toast('Run the payroll first','err');
-    const month=$(p+'pay-month').value||'';
-    const rows=await this._payWithBank();
-    const missing=rows.filter(r=>!r.bank||!r.account);
-    let csv='Staff ID,Name,Bank,Account Number,Net Pay (GHS)\n';
-    rows.forEach(r=>{csv+=`"${r.id}","${r.name}","${r.bank}","${r.account}",${r.net.toFixed(2)}\n`;});
-    csv+=`,,,TOTAL,${rows.reduce((t,r)=>t+r.net,0).toFixed(2)}\n`;
-    this._dl(csv,'THP_Bank_Advice_'+month+'.csv','text/csv');
-    if(missing.length)toast('⚠ Missing bank details for '+missing.length+' staff — add them in Pay Setup','info');
-  }
-  exportStatutory(p){
-    if(!this._payCalc?.length)return toast('Run the payroll first','err');
-    const month=$(p+'pay-month').value||'';
-    const S=this._payS||this._payDefaults();
-    let csv='THP-GHANA STATUTORY RETURNS,'+month+'\n\n';
-    csv+='PAYE (GRA)\nStaff ID,Name,Taxable Basis (Gross),PAYE Deducted\n';
-    let tPaye=0;this._payCalc.forEach(r=>{tPaye+=r.paye;csv+=`"${r.id}","${r.name}",${r.gross.toFixed(2)},${r.paye.toFixed(2)}\n`;});
-    csv+=`,,TOTAL PAYE,${tPaye.toFixed(2)}\n\n`;
-    csv+='SSNIT\nStaff ID,Name,Basic,Employee 5.5%,Employer 13%,Total,Provident Fund\n';
-    let tE=0,tR=0,t3=0;
-    this._payCalc.forEach(r=>{
-      const capped=Math.min(r.basic,S.ssnitCeilingMonthly);
-      const empr=S.ssnitEmployerPct/100*capped;
-      tE+=r.ssnitEmp;tR+=empr;t3+=r.tier3;
-      csv+=`"${r.id}","${r.name}",${r.basic.toFixed(2)},${r.ssnitEmp.toFixed(2)},${empr.toFixed(2)},${(r.ssnitEmp+empr).toFixed(2)},${r.tier3.toFixed(2)}\n`;
-    });
-    csv+=`,,TOTALS,${tE.toFixed(2)},${tR.toFixed(2)},${(tE+tR).toFixed(2)},${t3.toFixed(2)}\n`;
-    this._dl(csv,'THP_Statutory_Returns_'+month+'.csv','text/csv');
-  }
-  async emailPayslips(p){
-    if(!this._payCalc?.length)return toast('Run the payroll first','err');
-    const month=$(p+'pay-month').value||'';
-    const withEmail=this._payCalc.filter(r=>this.staff[r.id]?.email);
-    if(!withEmail.length)return toast('No staff email addresses on file','err');
-    if(!confirm('Email '+withEmail.length+' payslip(s) for '+month+'?\n\nEach staff member receives only their own payslip.'))return;
-    const S=this._payS||this._payDefaults();
-    const payload=withEmail.map(r=>({
-      name:r.name,email:this.staff[r.id].email,id:r.id,unit:r.unit||'',
-      basic:r.basic.toFixed(2),allow:(r.taxA+r.nonTax).toFixed(2),gross:r.gross.toFixed(2),
-      ssnit:r.ssnitEmp.toFixed(2),tier3:r.tier3.toFixed(2),paye:r.paye.toFixed(2),net:r.net.toFixed(2)
-    }));
-    toast('Sending payslips…','info');
-    const res=await API.gasPost({action:'sendPayslips',month,payslips:payload});
-    if(res&&res.success)toast('✓ '+res.sent+' payslip(s) emailed');
-    else toast('Payslip email failed'+(res?.error?': '+res.error:''),'err');
-  }
   exportPayrollCSV(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing to export','err');
     const month=$(p+'pay-month').value||'';
