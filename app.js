@@ -4205,7 +4205,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const S=await this._loadPaySettings();
     const month=$(p+'pay-month').value||'';
     let csv='THP-GHANA STATUTORY RETURNS,'+month+'\n';
-    csv+='Staff ID,Name,Basic (GHS),SSNIT Employee 5.5%,SSNIT Employer 13%,Tier 1 (13.5%),Tier 2 (5%),Tier 3 (voluntary),PAYE (GHS)\n';
+    csv+='Staff ID,Name,Basic (GHS),SSNIT Employee 5.5%,SSNIT Employer 13%,Tier 1 (13.5%),Tier 2 (5%),Provident Fund,PAYE (GHS)\n';
     let t={emp:0,empr:0,t1:0,t2:0,t3:0,paye:0};
     this._payCalc.forEach(r=>{
       const capped=Math.min(r.basic,S.ssnitCeilingMonthly);
@@ -4387,7 +4387,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     csv+='PAYE (GRA)\nStaff ID,Name,Taxable Basis (Gross),PAYE Deducted\n';
     let tPaye=0;this._payCalc.forEach(r=>{tPaye+=r.paye;csv+=`"${r.id}","${r.name}",${r.gross.toFixed(2)},${r.paye.toFixed(2)}\n`;});
     csv+=`,,TOTAL PAYE,${tPaye.toFixed(2)}\n\n`;
-    csv+='SSNIT\nStaff ID,Name,Basic,Employee 5.5%,Employer 13%,Total,Tier 3\n';
+    csv+='SSNIT\nStaff ID,Name,Basic,Employee 5.5%,Employer 13%,Total,Provident Fund\n';
     let tE=0,tR=0,t3=0;
     this._payCalc.forEach(r=>{
       const capped=Math.min(r.basic,S.ssnitCeilingMonthly);
@@ -4418,7 +4418,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   exportPayrollCSV(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing to export','err');
     const month=$(p+'pay-month').value||'';
-    let csv='Staff ID,Name,Unit,Basic,Gross,SSNIT Employee,Tier 3,PAYE,Net Pay,Employer Cost\n';
+    let csv='Staff ID,Name,Unit,Basic,Gross,SSNIT Employee,Provident Fund,PAYE,Net Pay,Employer Cost\n';
     this._payCalc.forEach(r=>{csv+=`"${r.id}","${r.name}","${r.unit||''}",${r.basic.toFixed(2)},${r.gross.toFixed(2)},${r.ssnitEmp.toFixed(2)},${r.tier3.toFixed(2)},${r.paye.toFixed(2)},${r.net.toFixed(2)},${r.cost.toFixed(2)}\n`;});
     this._dl(csv,'THP_Payroll_'+month+'.csv','text/csv');
   }
