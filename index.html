@@ -311,14 +311,14 @@
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="st-pay-summary" class="contract-summary"></div>
-          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Tier 3</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="st-pay-body"></tbody></table></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Provident Fund</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="st-pay-body"></tbody></table></div>
         </div>
         <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('st-')">💾 Save Settings</button></div></div>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
             <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="st-ps-emp" style="width:80px"></label>
             <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="st-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="st-ps-ceil" style="width:110px"></label>
-            <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
+            <label>Provident Fund Max % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
             <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="st-ps-relief" style="width:80px"></label>
           </div>
           <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
@@ -818,14 +818,14 @@
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="m-pay-summary" class="contract-summary"></div>
-          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Tier 3</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="m-pay-body"></tbody></table></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Provident Fund</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="m-pay-body"></tbody></table></div>
         </div>
         <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('m-')">💾 Save Settings</button></div></div>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
             <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="m-ps-emp" style="width:80px"></label>
             <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="m-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="m-ps-ceil" style="width:110px"></label>
-            <label>Tier 3 Max % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
+            <label>Provident Fund Max % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
             <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="m-ps-relief" style="width:80px"></label>
           </div>
           <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
@@ -1470,7 +1470,7 @@
     <div id="pm-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
     <div class="form-row" style="gap:.5rem">
       <div class="field"><label>Basic Salary (GH₵/month)</label><input type="number" step="0.01" id="pm-basic"></div>
-      <div class="field"><label>Tier 3 Contribution %</label><input type="number" step="0.1" id="pm-tier3"></div>
+      <div class="field"><label>Provident Fund %</label><input type="number" step="0.1" id="pm-tier3"></div>
     </div>
     <div class="field"><label>Grade</label><select id="pm-grade" class="fi"><option value="junior">Junior</option><option value="senior">Senior</option></select></div>
     <div class="form-row" style="gap:.5rem">
