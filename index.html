@@ -436,6 +436,13 @@
         <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
         </div>
       </div>
+        <div class="sb-spacer" style="flex:1"></div>
+        <div class="sync-pill no-url" id="mgr-sync-chip" style="display:none">⬤ Local only</div>
+        <div class="user-chip">
+          <div class="av" id="mgr-av" style="background:#F5A623">M</div>
+          <div><div class="u-name" id="mgr-name">Manager</div><div class="u-role" id="mgr-role">Manager</div></div>
+        </div>
+        <button class="btn-logout" onclick="APP.logout()">Sign Out</button>
 </nav>
     <main class="main">
       <div id="m-myleave" class="panel">
