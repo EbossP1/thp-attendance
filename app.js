@@ -1080,7 +1080,7 @@ class App{
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        this._applyPrivileges(id);this._checkContractReminders();setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},120);
+        this._applyPrivileges(id);this._checkContractReminders();
         this._startAutoClockOut();this._checkClockInReminder();
         if(isDefault||isTempPass){setTimeout(()=>showPanel('m-chpw','sb-mgr',null),400);if(isTempPass)setTimeout(()=>toast('🔐 You logged in with a temporary password. Please set a new one now.','info'),1500);}
         hideLoader();
@@ -2925,11 +2925,15 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(p.hr.includes(id)){
       document.querySelectorAll('.contract-tab').forEach(e=>e.classList.remove('contract-tab'));
       document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));
-      document.body.classList.add('hr-mode');this.renderHRDash('m-');
-      setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},60);
+      document.body.classList.add('hr-mode');
+      this.renderHRDash('m-');
     }
     if(p.cases.includes(id))document.querySelectorAll('.cases-tab').forEach(e=>e.classList.remove('cases-tab'));
     if(p.payroll.includes(id))document.querySelectorAll('.payroll-tab').forEach(e=>e.classList.remove('payroll-tab'));
+    // Sync sidebar groups AFTER privileges resolve — never on a timer,
+    // otherwise a slow fetch leaves a granted section marked "empty".
+    _restoreNavGroups();_hideEmptyNavGroups();
+    setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},150);
   }
   async renderPrivileges(){
     const body=$('a-priv-body');if(!body)return;
@@ -4681,7 +4685,7 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        APP._applyPrivileges(id);APP._checkContractReminders();setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},120);
+        APP._applyPrivileges(id);APP._checkContractReminders();
         APP._startAutoClockOut();APP._checkClockInReminder();
         hideLoader();
       },100);
