@@ -1027,6 +1027,7 @@
             <div class="field"><label>Supervisor</label><select id="ns-supervisor"><option value="">-- None / Self --</option></select></div>
             <div class="field"><label>Password</label><input type="password" id="ns-pw" placeholder="Set password"></div>
             <div class="field"><label>Email (for notifications)</label><input type="email" id="ns-email" placeholder="staff@thpghana.org"></div>
+            <div class="field"><label>Phone (for SMS)</label><input type="tel" id="ns-phone" placeholder="e.g. 0501234567"></div>
           </div>
           <button class="btn-add" onclick="APP.addStaff()">Add Staff Member</button>
         </div>
@@ -1563,6 +1564,11 @@
   </div>
 </div>
 
+<div id="thp-splash">
+  <img src="icon-192.png" alt="THP-Ghana" onerror="this.style.display='none'">
+  <div class="splash-bar"><div class="splash-fill"></div></div>
+  <div class="splash-txt">Loading THP-Ghana Attendance</div>
+</div>
 <div id="sb-backdrop" onclick="closeAllSB()"></div>
 <div id="toasts"></div>
 <script src="app.js"></script>
