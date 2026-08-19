@@ -96,29 +96,36 @@ body{
 /* ── LOADING OVERLAY ── */
 #loading-overlay{
   position:fixed;inset:0;z-index:10000;
-  display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;
   background:var(--bg);
   transition:opacity .4s ease;
 }
 #loading-overlay.active{display:flex;}
 #loading-overlay.fade-out{opacity:0;pointer-events:none;}
+/* Gmail-style: square logo above a slim THP-coloured progress bar */
 .lo-ring{
-  position:relative;width:52px;height:52px;
+  position:relative;width:auto;height:auto;
   display:flex;align-items:center;justify-content:center;
 }
-.lo-spinner{
-  position:absolute;inset:0;border-radius:50%;
-  border:2.5px solid rgba(45,53,146,.12);
-  border-top-color:#2D3592;
-  border-right-color:#3DBFB8;
-  animation:loSpin .65s linear infinite;
-}
+.lo-spinner{display:none;}          /* ring replaced by the bar below */
 .lo-logo{
-  width:28px;height:28px;border-radius:50%;object-fit:cover;
+  width:88px;height:88px;border-radius:18px;object-fit:contain;
   position:relative;z-index:1;
+  animation:loPop .5s cubic-bezier(.2,1.3,.4,1);
 }
-.lo-text{font-size:.78rem;color:var(--text2);font-weight:500;letter-spacing:.2px;}
-@keyframes loSpin{to{transform:rotate(-360deg);}}
+@keyframes loPop{from{transform:scale(.85);opacity:0}to{transform:none;opacity:1}}
+.lo-text{
+  font-size:.86rem;color:var(--text2);font-weight:500;letter-spacing:.2px;order:3;
+}
+/* the moving fill */
+.lo-bar{width:210px;height:4px;border-radius:4px;background:rgba(45,53,146,.14);
+  overflow:hidden;position:relative;order:2;}
+.lo-bar span{position:absolute;top:0;left:-45%;height:100%;width:45%;border-radius:4px;
+  background:linear-gradient(90deg,#2D3592,#3DBFB8,#F5A623,#3DBFB8,#2D3592);
+  background-size:300% 100%;
+  animation:loSlide 1.25s cubic-bezier(.55,.1,.35,.9) infinite, loHue 2.4s linear infinite;}
+@keyframes loSlide{0%{left:-45%}100%{left:100%}}
+@keyframes loHue{0%{background-position:0% 50%}100%{background-position:300% 50%}}
 
 /* ── SETUP BANNER ── */
 #setup-banner{
