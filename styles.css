@@ -823,3 +823,19 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
   #sb-backdrop{display:none!important;}
   .main{padding-top:1.5rem!important;}
 }
+/* ── Gmail-style startup splash ── */
+#thp-splash{position:fixed;inset:0;z-index:99999;background:var(--bg,#f0f4ff);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4rem;
+  transition:opacity .45s ease,visibility .45s ease}
+#thp-splash.hide{opacity:0;visibility:hidden}
+#thp-splash img{width:96px;height:96px;border-radius:20px;object-fit:contain;
+  animation:splashPop .55s cubic-bezier(.2,1.3,.4,1)}
+@keyframes splashPop{from{transform:scale(.82);opacity:0}to{transform:none;opacity:1}}
+.splash-bar{width:220px;height:4px;border-radius:4px;background:rgba(45,53,146,.14);overflow:hidden;position:relative}
+.splash-fill{position:absolute;top:0;left:0;height:100%;width:42%;border-radius:4px;
+  background:linear-gradient(90deg,#2D3592,#3DBFB8,#F5A623,#3DBFB8,#2D3592);
+  background-size:300% 100%;
+  animation:splashSlide 1.25s cubic-bezier(.55,.1,.35,.9) infinite, splashHue 2.4s linear infinite}
+@keyframes splashSlide{0%{left:-45%}100%{left:100%}}
+@keyframes splashHue{0%{background-position:0% 50%}100%{background-position:300% 50%}}
+.splash-txt{font-size:.82rem;color:var(--text3,#94a3b8);letter-spacing:.3px}
