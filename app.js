@@ -110,6 +110,16 @@ function showView(id){
 }
 /* Belt-and-braces: the mobile tab strip must never show on wide screens,
    even if a cached stylesheet is being served. */
+function hideSplash(){
+  const sp=document.getElementById('thp-splash');
+  if(sp&&!sp.classList.contains('hide')){
+    sp.classList.add('hide');
+    setTimeout(()=>{if(sp.parentNode)sp.remove();},600);
+  }
+}
+window.addEventListener('load',()=>setTimeout(hideSplash,650));
+setTimeout(hideSplash,6000);   // never let the splash trap the user
+
 function _syncNavForWidth(){
   const wide=window.innerWidth>768;
   document.querySelectorAll('.mob-nav').forEach(n=>{n.style.display=wide?'none':'';});
@@ -2064,12 +2074,26 @@ class App{
     if(!/^THPG\/\d{2}\/\d{4}(-\d+)?$/i.test(id))return toast('Format: THPG/MM/YYYY','err');
     if(pass.length<4)return toast('Min 4 char password','err');
     const color=avColor(name);
-    const staffData={name,unit,role,pass,color,email,gender,supervisor};
+    const phoneVal=$('ns-phone')?.value.trim()||'';
+    const staffData={name,unit,role,pass,color,email,gender,supervisor,phone:phoneVal};
     /* SERVER FIRST */
     const r=await API.saveStaff(id,staffData);
     if(!r||!r.success){toast('Server error','err');return;}
     this.staff[id]=staffData;this._cacheS();this._renderStaffGrid();this._populateSupervisorDropdown();
-    ['ns-id','ns-nm','ns-pw','ns-email'].forEach(i=>$(i).value='');
+    ['ns-id','ns-nm','ns-pw','ns-email','ns-phone'].forEach(i=>{if($(i))$(i).value='';});
+    this.audit('Staff created','Staff',name,id+' · '+unit);
+    // Welcome message with first-time login instructions (SMS first, email fallback)
+    const phone=$('ns-phone')?.value.trim()||'';
+    if(email||phone){
+      API.gasPost({action:'welcomeStaff',staffId:id,name,email,phone,
+        unit,role,tempPass:pass,supervisor:this._sName(supervisor)||''})
+        .then(r=>{
+          if(r&&r.success)toast(name+' added — welcome '+(r.channel==='sms'?'SMS':'email')+' sent ✓');
+          else toast(name+' added, but the welcome message failed to send','info');
+        }).catch(()=>toast(name+' added (welcome message not sent)','info'));
+    } else {
+      toast(name+' added — no email or phone on file, so no welcome message sent','info');
+    }
     toast(name+' added!');
   }
   _populateSupervisorDropdown(){
