@@ -415,15 +415,22 @@ const API={
     try{const sess=JSON.parse(localStorage.getItem('thp_session')||'null');return sess?.token||'';}catch(e){return '';}
   },
   async secureGet(table,query){
-    const u=APP?.user;if(!u)return null;
+    const u=APP?.user;
+    if(!u){this.lastError='Not signed in';return null;}
+    if(!this._sessTok()){this.lastError='Session expired — sign out and sign in again';return null;}
     const r=await this.gasPost({action:'secureGet',table,query:query||'',staffId:u.id,token:this._sessTok()});
-    if(!r||!r.success){this.lastError=(r&&r.error)||'Secure read failed';return null;}
+    if(r===null){this.lastError='No response from Apps Script — check the deployment';return null;}
+    if(!r.success){this.lastError=r.error||'The server refused the request';return null;}
     return r.rows||[];
   },
   async secureSave(table,rows){
-    const u=APP?.user;if(!u)return null;
+    const u=APP?.user;
+    if(!u){this.lastError='You are not signed in. Refresh and sign in again.';return null;}
+    if(!this._sessTok()){this.lastError='Your session has expired. Sign out and sign in again.';return null;}
+    if(!this.getGasUrl()){this.lastError='The Apps Script URL is not configured — see Google Sheets in the admin panel.';return null;}
     const r=await this.gasPost({action:'secureSave',table,rows,staffId:u.id,token:this._sessTok()});
-    if(!r||!r.success){this.lastError=(r&&r.error)||'Secure save failed';return null;}
+    if(r===null){this.lastError='No response from Apps Script. Check the connection, and that the script is deployed.';return null;}
+    if(!r.success){this.lastError=r.error||'The server rejected the save.';return null;}
     return r.rows||[];
   },
   async secureDelete(table,query){
@@ -1791,7 +1798,7 @@ class App{
       overall_status:'Pending',updated_at:new Date().toISOString()};
     msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
     const r=await API._update('leave_requests','id=eq.'+encodeURIComponent(id),upd);
-    if(r===null)return msg.innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+    if(r===null)return msg.innerHTML='<span style="color:var(--red)">Save failed — '+(API.lastError||'reason unknown')+'</span>';
     Object.assign(l,{startDate:s,endDate:e,days,
       supervisorStatus:upd.supervisor_status,supervisorNote:'',
       finalApproverStatus:upd.final_approver_status,finalApproverNote:'',
@@ -3167,7 +3174,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const p={hr:grab('pv-hr'),cases:grab('pv-cases'),payroll:grab('pv-pay')};
     const r=await API._upsert('settings',[{key:'privileges',value:JSON.stringify(p)}]);
     if(r){this.audit('Privileges changed','Security','',JSON.stringify(p));toast('Privileges saved ✓ — takes effect at each person\'s next login');}
-    else toast('Save failed','err');
+    else toast('Save failed — '+(API.lastError||'reason unknown'),'err');
   }
 
   /* ── Generic branded table print ── */
@@ -4585,7 +4592,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
 
       closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
     }
-    else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+    else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed — '+(API.lastError||'reason unknown')+'</span>';
   }
   /* ── Phase B: bank advice, statutory returns, allocation, payslips ── */
   _payGuard(){
