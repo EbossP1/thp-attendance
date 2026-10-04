@@ -846,3 +846,41 @@ code{background:var(--surf2);padding:2px 5px;border-radius:4px;font-size:.76rem;
 @keyframes splashSlide{0%{left:-45%}100%{left:100%}}
 @keyframes splashHue{0%{background-position:0% 50%}100%{background-position:300% 50%}}
 .splash-txt{font-size:.82rem;color:var(--text3,#94a3b8);letter-spacing:.3px}
+/* Group-level notification badges */
+.grp-badge{display:none;background:#dc2626;color:#fff;border-radius:999px;font-size:.6rem;
+  font-weight:700;padding:1px 6px;margin-left:.35rem;line-height:1.6}
+.grp-badge.on{display:inline-block}
+.nav-item .nv-badge{margin-left:auto}
+/* Layout only — must NOT re-show tabs hidden by a privilege class, so the
+   rule is scoped to items that are not gated. */
+.nav-item:not(.cl-only-tab):not(.hr-tab):not(.cases-tab):not(.payroll-tab):not(.contract-tab){
+  display:flex;align-items:center;gap:.55rem}
+/* First-login hint pointing at the dashboard */
+.nav-hint{position:absolute;background:var(--navy,#2D3592);color:#fff;font-size:.72rem;
+  padding:.45rem .7rem;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:500;
+  max-width:210px;line-height:1.45}
+.nav-hint::after{content:'';position:absolute;left:-6px;top:14px;border:6px solid transparent;
+  border-right-color:var(--navy,#2D3592)}
+.nav-hint button{background:rgba(255,255,255,.2);border:0;color:#fff;border-radius:6px;
+  font-size:.68rem;padding:2px 8px;margin-top:.4rem;cursor:pointer;font-family:inherit}
+.hf-sec{font-size:.72rem;font-weight:700;color:var(--teal);letter-spacing:.5px;margin:1rem 0 .5rem;
+  padding-bottom:.25rem;border-bottom:1px solid var(--border)}
+.hf-hint{font-size:.73rem;color:var(--text2);background:var(--surf2);border-left:3px solid var(--teal);
+  border-radius:6px;padding:.5rem .7rem;margin:.35rem 0 .7rem;line-height:1.55}
+/* Staff file header with passport photo */
+.hf-head{display:flex;gap:1rem;align-items:flex-start;padding:.9rem 1rem;margin-bottom:.6rem;
+  background:linear-gradient(135deg,rgba(45,53,146,.07),rgba(61,191,184,.07));
+  border:1px solid var(--border);border-radius:12px}
+.hf-photo-box{width:96px;height:116px;flex:0 0 auto;border-radius:8px;overflow:hidden;
+  border:2px solid var(--border);background:var(--surf2);display:flex;align-items:center;justify-content:center}
+.hf-photo-box img{width:100%;height:100%;object-fit:cover}
+.hf-photo-ph{font-size:2.4rem;opacity:.35}
+
+/* ── Privilege gating — must be the final word in the cascade ── */
+.cl-only-tab,.hr-tab,.cases-tab,.payroll-tab,.contract-tab{display:none!important;}
+.mob-tab.cl-only-tab,.mob-tab.hr-tab,.mob-tab.cases-tab,
+.mob-tab.payroll-tab,.mob-tab.contract-tab{display:none!important;}
+.allow-row{display:flex;gap:.4rem;align-items:center;margin-bottom:.4rem;flex-wrap:wrap}
+.allow-row input.an{flex:2;min-width:140px}
+.allow-row input.aa{width:110px}
+.allow-row select.at{width:140px}
