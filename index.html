@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +16,7 @@
 </head>
 <body>
 
-<button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+
 <div id="bg"></div>
 <div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
 <!-- Loading overlay — blocks UI until data is ready -->
@@ -124,9 +124,10 @@
       <button class="nav-item"        onclick="showPanel('p-leave','sb-staff',event);APP._initLeaveForm();APP._markLeaveDecisionsSeen()"><span class="ico">🏖</span>Leave<span class="notif-badge" id="badge-staff-leave"></span></button>
       <button class="nav-item"        onclick="showPanel('st-docs','sb-staff',event);APP.renderStaffDocs();APP.markSeen('doc')"><span class="ico">📁</span>Documents<span class="nv-badge" id="badge-docs"></span></button>
       <button class="nav-item"        onclick="showPanel('st-appraisal','sb-staff',event);APP.renderMyAppraisals()"><span class="ico">📊</span>My Appraisal</button>
+      <button class="nav-item"        onclick="showPanel('st-payslip','sb-staff',event);APP.renderMyPayslips()"><span class="ico">🧾</span>My Payslips<span class="nv-badge" id="badge-slip"></span></button>
+      <button class="nav-item payroll-tab" id="nav-st-payroll" onclick="showPanel('st-payroll','sb-staff',event);APP.renderPayroll('st-')"><span class="ico">₵</span>Payroll</button>
       <button class="nav-item"        onclick="showPanel('p-profile','sb-staff',event);APP._renderProfileForm('')"><span class="ico">👤</span>My Profile</button>
       <button class="nav-item"        onclick="showPanel('p-chpw','sb-staff',event)"><span class="ico">🔑</span>Change Password</button>
-      <button class="nav-item payroll-tab" id="nav-st-payroll" onclick="showPanel('st-payroll','sb-staff',event);APP.renderPayroll('st-')"><span class="ico">₵</span>Payroll</button>
       <div class="sb-bottom">
         <div class="sync-pill no-url" id="st-sync-chip" style="display:none">⬤ Local only</div>
         <div class="user-chip">
@@ -303,26 +304,40 @@
           <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
             <input class="fi" type="month" id="st-pay-month" style="width:150px" onchange="APP.renderPayroll('st-')">
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('st-')">🔄 Recalculate</button>
-            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('st-')">💾 Save Run</button>
+            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('st-')">💾 Save Draft</button>
+            <button class="bsm" id="st-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('st-')">📤 Submit for Approval</button>
+            <button class="bsm" id="st-pay-approve" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff;display:none" onclick="APP.approvePayrollRun('st-')">✅ Approve</button>
+            <button class="bsm" id="st-pay-return" style="background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;display:none" onclick="APP.returnPayrollRun('st-')">↩ Return</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('st-')">📊 CSV</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('st-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('st-')">🏛 Statutory</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('st-')">🧾 Preview Payslip</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')">📧 Email Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('st-')" title="Opens every calculated payslip, one per page, ready to print or save">🧾 Preview All Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
+          <div id="st-pay-status" style="padding:.6rem 1.3rem;font-size:.8rem;display:none;border-bottom:1px solid var(--border)"></div>
           <div id="st-pay-summary" class="contract-summary"></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Provident Fund</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="st-pay-body"></tbody></table></div>
         </div>
         <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('st-')">💾 Save Settings</button></div></div>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
-            <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="st-ps-emp" style="width:80px"></label>
-            <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="st-ps-empr" style="width:80px"></label>
+            <label>SSNIT Total % <input class="fi" type="number" step="0.1" id="st-ps-emp" style="width:80px"></label>
+            <label>— of which deducted % <input class="fi" type="number" step="0.1" id="st-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="st-ps-ceil" style="width:110px"></label>
-            <label>Provident Fund Max % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
-            <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="st-ps-relief" style="width:80px"></label>
+            <label>Provident Fund Total % <input class="fi" type="number" step="0.1" id="st-ps-t3" style="width:80px"></label>
+            <label>— of which deducted % <input class="fi" type="number" step="0.1" id="st-ps-relief" style="width:80px"></label>
           </div>
-          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
+          <div id="st-ps-applied" style="padding:0 1.3rem .6rem;font-size:.76rem;color:var(--text2)"></div>
+          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup. These rates appear here only — payslips show amounts, not percentages.</div>
+        </div>
+      </div>
+      <div id="st-payslip" class="panel">
+        <div class="pg-hdr"><h2>🧾 My Payslips</h2><p>Your approved payslips — private to you</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Available Payslips</h4></div>
+          <div class="scr"><table><thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net Pay</th><th>Approved</th><th style="width:110px"></th></tr></thead><tbody id="st-slip-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>🔒 Private:</strong> only you can see these. Click View to open your payslip, then use Print to save it as a PDF or print a copy.
         </div>
       </div>
       <div id="st-appraisal" class="panel">
@@ -388,56 +403,57 @@
     <nav class="sidebar" id="sb-mgr">
       <div class="sb-logo"><img src="data:image/png;base64,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" alt="Logo"><div class="sb-brand">Manager<small>THP-Ghana</small></div></div>
       <div class="nav-lbl">Overview</div>
-      <div class="nav-group" id="grp-mgr-main">
-        <button class="nav-grp-hdr" onclick="toggleNavGroup('grp-mgr-main')"><span class="ico">🏠</span><span class="grp-label">Overview</span><span class="grp-caret">▾</span></button>
+            <div class="nav-group" id="grp-mgr-me">
+        <button class="nav-grp-hdr" onclick="toggleNavGroup('grp-mgr-me')"><span class="ico">🙋</span><span class="grp-label">My Workspace</span><span class="grp-caret">▾</span></button>
         <div class="nav-grp-body">
-        <button class="nav-item active" onclick="showPanel('m-dash','sb-mgr',event)"><span class="ico">📊</span>Dashboard</button>
-        <button class="nav-item"        onclick="showPanel('m-clock','sb-mgr',event)"><span class="ico">⏱</span>Clock In / Out</button>
-        <button class="nav-item"        onclick="showPanel('m-mylogs','sb-mgr',event);APP.renderMgrMyLogs()"><span class="ico">📝</span>My Logs</button>
-        <button class="nav-item"        onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave()"><span class="ico">🌴</span>My Leave</button>
+          <button class="nav-item active" onclick="showPanel('m-dash','sb-mgr',event)"><span class="ico">📊</span>Dashboard</button>
+          <button class="nav-item"        onclick="showPanel('m-clock','sb-mgr',event)"><span class="ico">⏱</span>Clock In / Out</button>
+          <button class="nav-item"        onclick="showPanel('m-mylogs','sb-mgr',event);APP.renderMgrMyLogs()"><span class="ico">📝</span>My Logs</button>
+          <button class="nav-item"        onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave()"><span class="ico">🌴</span>My Leave</button>
+          <button class="nav-item"        onclick="showPanel('m-myappraisal','sb-mgr',event);APP.renderMyAppraisals('m-')"><span class="ico">📊</span>My Appraisal</button>
+          <button class="nav-item"        onclick="showPanel('m-payslip','sb-mgr',event);APP.renderMyPayslips('m-')"><span class="ico">🧾</span>My Payslips<span class="nv-badge" id="badge-slip-m"></span></button>
+          <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
+          <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
         </div>
       </div>
       <div class="nav-group" id="grp-mgr-team">
-        <button class="nav-grp-hdr" onclick="toggleNavGroup('grp-mgr-team')"><span class="ico">👥</span><span class="grp-label">Team</span><span class="grp-caret">▾</span></button>
+        <button class="nav-grp-hdr" onclick="toggleNavGroup('grp-mgr-team')"><span class="ico">👥</span><span class="grp-label">Team Management</span><span class="grp-badge" id="badge-team"></span><span class="grp-caret">▾</span></button>
         <div class="nav-grp-body">
-        <button class="nav-item"        onclick="showPanel('m-recs','sb-mgr',event)"><span class="ico">📋</span>Team Records</button>
-        <button class="nav-item" id="nav-mgr-leave" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave()"><span class="ico">🏖</span><span id="nav-mgr-leave-text">Leave Review</span><span class="notif-badge" id="badge-mgr-leave"></span></button>
-        <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
-        <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
+          <button class="nav-item"        onclick="showPanel('m-recs','sb-mgr',event)"><span class="ico">📋</span>Team Records</button>
+          <button class="nav-item" id="nav-mgr-leave" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave()"><span class="ico">🏖</span><span id="nav-mgr-leave-text">Leave Review</span><span class="notif-badge" id="badge-mgr-leave"></span></button>
+          <button class="nav-item" id="nav-mgr-history" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory()"><span class="ico">📒</span>Leave History</button>
+          <button class="nav-item" onclick="showPanel('m-torate','sb-mgr',event);APP.renderToRate()"><span class="ico">📝</span>Appraisals to Rate<span class="nv-badge" id="badge-myapr"></span></button>
+          <button class="nav-item" id="nav-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport()"><span class="ico">📈</span>Reports</button>
+          <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
         </div>
       </div>
       <div class="nav-group" id="grp-mgr-hr">
-        <button class="nav-grp-hdr collapsed" onclick="toggleNavGroup('grp-mgr-hr')"><span class="ico">🗂</span><span class="grp-label">Human Resources</span><span class="grp-caret">▾</span></button>
+        <button class="nav-grp-hdr collapsed" onclick="toggleNavGroup('grp-mgr-hr')"><span class="ico">🗂</span><span class="grp-label">Human Resources</span><span class="grp-badge" id="badge-hr"></span><span class="grp-caret">▾</span></button>
         <div class="nav-grp-body">
-        <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts</button>
-        <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>Staff Files</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-birthdays','sb-mgr',event);APP.renderBirthdays('m-')"><span class="ico">🎂</span>Birthdays</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="ico">📣</span>Announcements</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="ico">📁</span>File Manager</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-performance','sb-mgr',event);APP.renderPerf('m-')"><span class="ico">📊</span>Performance</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-recruit','sb-mgr',event);APP.renderRecruit('m-')"><span class="ico">🧑‍💼</span>Recruitment</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-training','sb-mgr',event);APP.renderTraining('m-')"><span class="ico">🎓</span>Training</button>
-        <button class="nav-item cases-tab" id="nav-mgr-cases" onclick="showPanel('m-cases','sb-mgr',event);APP.renderCases('m-')"><span class="ico">⚖</span>Lifecycle &amp; Cases</button>
-        <button class="nav-item hr-tab" onclick="showPanel('m-orgchart','sb-mgr',event);APP.renderOrgChart('m-')"><span class="ico">🌳</span>Org Chart</button>
-  <button class="nav-item hr-tab" onclick="showPanel('m-assistant','sb-mgr',event);APP.initAssistant()"><span class="ico">✨</span>Ask HR</button>
-  <button class="nav-item hr-tab" onclick="showPanel('m-audit','sb-mgr',event);APP.renderAudit()"><span class="ico">🛡</span>Audit Trail</button>
+          <button class="nav-item contract-tab" id="nav-mgr-contract" onclick="showPanel('m-contracts','sb-mgr',event);APP.renderContracts('m-')"><span class="ico">📄</span>Contracts<span class="nv-badge" id="badge-contracts"></span></button>
+          <button class="nav-item hr-tab" id="nav-mgr-hrfiles" onclick="showPanel('m-hrfiles','sb-mgr',event);APP.renderHRFiles('m-')"><span class="ico">🗂</span>Staff Files<span class="nv-badge" id="badge-files"></span></button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-birthdays','sb-mgr',event);APP.renderBirthdays('m-')"><span class="ico">🎂</span>Birthdays</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-announce','sb-mgr',event);APP.renderAnnouncements('m-')"><span class="ico">📣</span>Announcements</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-filemgr','sb-mgr',event);APP.renderFileMgr('m-')"><span class="ico">📁</span>File Manager</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-performance','sb-mgr',event);APP.renderPerf('m-')"><span class="ico">📊</span>Performance</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-recruit','sb-mgr',event);APP.renderRecruit('m-')"><span class="ico">🧑‍💼</span>Recruitment</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-training','sb-mgr',event);APP.renderTraining('m-')"><span class="ico">🎓</span>Training</button>
+          <button class="nav-item cases-tab" id="nav-mgr-cases" onclick="showPanel('m-cases','sb-mgr',event);APP.renderCases('m-')"><span class="ico">⚖</span>Lifecycle &amp; Cases</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-onboard','sb-mgr',event);APP.renderChecklists()"><span class="ico">🚀</span>On/Offboarding<span class="nv-badge" id="badge-onb"></span></button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-assets','sb-mgr',event);APP.renderAssets()"><span class="ico">💻</span>Assets</button>
+            <button class="nav-item hr-tab" onclick="showPanel('m-orgchart','sb-mgr',event);APP.renderOrgChart('m-')"><span class="ico">🌳</span>Org Chart</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-assistant','sb-mgr',event);APP.initAssistant()"><span class="ico">✨</span>Ask HR</button>
+          <button class="nav-item hr-tab" onclick="showPanel('m-audit','sb-mgr',event);APP.renderAudit()"><span class="ico">🛡</span>Audit Trail</button>
         </div>
       </div>
       <div class="nav-group" id="grp-mgr-fin">
-        <button class="nav-grp-hdr collapsed" onclick="toggleNavGroup('grp-mgr-fin')"><span class="ico">₵</span><span class="grp-label">Finance</span><span class="grp-caret">▾</span></button>
+        <button class="nav-grp-hdr collapsed" onclick="toggleNavGroup('grp-mgr-fin')"><span class="ico">₵</span><span class="grp-label">Finance</span><span class="grp-badge" id="badge-fin"></span><span class="grp-caret">▾</span></button>
         <div class="nav-grp-body">
-        <button class="nav-item payroll-tab" id="nav-mgr-payroll" onclick="showPanel('m-payroll','sb-mgr',event);APP.renderPayroll('m-')"><span class="ico">₵</span>Payroll</button>
+          <button class="nav-item payroll-tab" id="nav-mgr-payroll" onclick="showPanel('m-payroll','sb-mgr',event);APP.renderPayroll('m-')"><span class="ico">₵</span>Payroll<span class="nv-badge" id="badge-payroll"></span></button>
+          <button class="nav-item payroll-tab" onclick="showPanel('m-grants','sb-mgr',event);APP.renderGrants()"><span class="ico">🎗</span>Grants<span class="nv-badge" id="badge-grants"></span></button>
         </div>
       </div>
-      <div class="nav-group" id="grp-mgr-acct">
-        <button class="nav-grp-hdr collapsed" onclick="toggleNavGroup('grp-mgr-acct')"><span class="ico">👤</span><span class="grp-label">My Account</span><span class="grp-caret">▾</span></button>
-        <div class="nav-grp-body">
-        <button class="nav-item"        onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-')"><span class="ico">👤</span>My Profile</button>
-        <button class="nav-item cl-only-tab" id="nav-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-')"><span class="ico">🔄</span>Delegation</button>
-        <button class="nav-item"        onclick="showPanel('m-chpw','sb-mgr',event)"><span class="ico">🔑</span>Change Password</button>
-        </div>
-      </div>
-        <div class="sb-spacer" style="flex:1"></div>
+      <div class="sb-spacer" style="flex:1"></div>
         <div class="sync-pill no-url" id="mgr-sync-chip" style="display:none">⬤ Local only</div>
         <div class="user-chip">
           <div class="av" id="mgr-av" style="background:#F5A623">M</div>
@@ -607,7 +623,7 @@
                 <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.clearMgrRepDates()">✕</button>
               </div>
               <div style="display:flex;align-items:center;gap:.3rem;font-size:.76rem;color:var(--text2)">
-                <span>🔍</span><input class="fi" type="text" id="mgr-rep-staff" placeholder="Staff ID or Name…" oninput="APP.renderMgrReport()" style="width:160px">
+                <span>🔍</span><input class="fi" type="text" id="mgr-rep-staff" placeholder="Search staff / item…" oninput="APP.onRepSearch()" style="width:170px">
                 <select class="fi" id="mgr-rep-type" onchange="APP.renderMgrReport()" style="width:170px" title="Report type">
                   <option value="attendance">📋 Attendance</option>
                   <option value="leave">🌴 Leave Register</option>
@@ -618,6 +634,7 @@
                   <option value="appraisal">📊 Appraisals</option>
                   <option value="recruit">🧑‍💼 Recruitment</option>
                   <option value="demographics">📈 Headcount &amp; Demographics</option>
+                  <option value="individual">👤 Individual Staff File</option>
                 </select>
                 <select class="fi" id="mgr-rep-mode" onchange="APP.renderMgrReport()" style="width:150px" title="Attendance summary view"><option value="daily">Daily Register</option><option value="summary">Days Summary</option></select>
                 <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="$('mgr-rep-staff').value='';APP.renderMgrReport()">✕</button>
@@ -632,6 +649,23 @@
         </div>
       </div>
       <!-- Staff Contracts (Edna / Country Leader) -->
+      <div id="m-payslip" class="panel">
+        <div class="pg-hdr"><h2>🧾 My Payslips</h2><p>Your approved payslips — private to you</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Available Payslips</h4></div>
+          <div class="scr"><table><thead><tr><th>Period</th><th>Gross</th><th>Deductions</th><th>Net Pay</th><th>Approved</th><th style="width:110px"></th></tr></thead><tbody id="m-slip-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>🔒 Private:</strong> only you can see these. Click View to open your payslip, then use Print to save it as a PDF or print a copy.
+        </div>
+      </div>
+      <div id="m-myappraisal" class="panel">
+        <div class="pg-hdr"><h2>📊 My Appraisal</h2><p>Your own performance self-assessment</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>My Own Reviews</h4><div class="t-btns"><button class="btn-add" style="margin:0" onclick="APP.openMyAppraisal()">＋ Start Self-Assessment</button></div></div>
+          <div class="scr"><table><thead><tr><th>Period</th><th>Type</th><th>Line Manager</th><th>Self</th><th>Final</th><th>Status</th><th style="width:90px"></th></tr></thead><tbody id="m-apr-body"></tbody></table></div>
+        </div>
+      </div>
       <div id="m-contracts" class="panel">
         <div class="pg-hdr"><h2>📄 Staff Contracts</h2><p>Track contract expiry dates and get early reminders before renewal is due</p></div>
         <div class="tcard">
@@ -707,6 +741,9 @@
             <div class="field"><label>Access</label><select id="m-od-acc" class="fi"><option value="download">View &amp; Download</option><option value="view">View Only</option></select></div>
           </div>
           <div class="field"><label>Document (max 5MB)</label><input type="file" id="m-od-file" style="font-size:.78rem"></div>
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--text2);margin-bottom:.6rem">
+            <input type="checkbox" id="m-od-notify"> Notify staff by email that this document is available
+          </label>
           <button class="btn-add" style="margin:0" onclick="APP.uploadOrgDoc()">📤 Upload Document</button>
           <div id="m-od-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
         </div>
@@ -719,7 +756,7 @@
         <div class="tcard">
           <div class="tcard-hdr"><h4>Appraisals</h4>
             <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
-              <select class="fi" id="m-ap-status" onchange="APP.renderPerf('m-')" style="width:160px"><option value="">All Statuses</option><option>Draft</option><option>Self-Assessed</option><option>Manager Reviewed</option><option>Acknowledged</option><option>Closed</option></select>
+              <select class="fi" id="m-ap-status" onchange="APP.renderPerf('m-')" style="width:160px"><option value="">All Statuses</option><option>Manager Reviewed</option><option>Acknowledged</option><option>Closed</option></select>
               <button class="bsm bsm-teal" onclick="APP.renderPerf('m-')">🔄 Refresh</button>
               <button class="bsm bsm-gold" onclick="APP.printSection('m-performance','Performance Appraisals')">🖨 Print</button>
               <button class="btn-add" style="margin:0" onclick="APP.openPerfModal()">＋ New Appraisal</button>
@@ -728,7 +765,7 @@
           <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Type</th><th>Final Score</th><th>Rating</th><th>Status</th><th>Reviewed</th><th style="width:110px">Actions</th></tr></thead><tbody id="m-perf-body"></tbody></table></div>
         </div>
         <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
-          <strong>Rating scale:</strong> 1 Unsatisfactory · 2 Below Criteria · 3 Achieved Criteria · 4 Above Criteria · 5 Exceeded All Criteria. Final score is the weighted average of KPA ratings (weightings must total 100%).
+          <strong>Rating scale:</strong> 1 Unsatisfactory performance · 2 Performed Below Performance Criteria · 3 Achieved Performance Criteria · 4 Achieved Above Performance Criteria · 5 Exceeded on all Performance Criteria. Final score is the weighted average of KPA ratings (weightings must total 100%).
         </div>
       </div>
       <div id="m-recruit" class="panel">
@@ -758,9 +795,40 @@
           <div class="scr"><table><thead><tr><th>Staff</th><th>Course</th><th>Provider</th><th>Completed</th><th>Expiry</th><th>Cert</th><th style="width:70px"></th></tr></thead><tbody id="m-train-body"></tbody></table></div></div>
       </div>
       <div id="m-cases" class="panel">
-        <div class="pg-hdr"><h2>⚖ Lifecycle &amp; Cases</h2><p>Confidential — visible to HR and Admin only</p></div>
+        <div class="pg-hdr"><h2>⚖ Lifecycle &amp; Cases</h2><p>Confidential — visible to HR, the Country Leader and Admin only</p></div>
         <div class="tcard"><div class="tcard-hdr"><h4>Case Log</h4><div class="t-btns"><button class="bsm bsm-gold" onclick="APP.printSection('m-cases','HR Case Log')">🖨 Print</button><button class="btn-add" style="margin:0" onclick="APP.openCaseModal()">＋ New Case</button></div></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Type</th><th>Opened</th><th>Status</th><th>Summary</th><th>Outcome</th><th style="width:70px"></th></tr></thead><tbody id="m-case-body"></tbody></table></div></div>
+      </div>
+      <div id="m-onboard" class="panel">
+        <div class="pg-hdr"><h2>🚀 Onboarding &amp; Offboarding</h2><p>Structured checklists for joiners and leavers</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Active &amp; Completed</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <select class="fi" id="ob-filter" onchange="APP.renderChecklists()" style="width:150px"><option value="">All</option><option value="onboarding">Onboarding</option><option value="offboarding">Offboarding</option><option value="open">In Progress</option></select>
+              <button class="bsm bsm-teal" onclick="APP.renderChecklists()">🔄 Refresh</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-onboard','On/Offboarding')">🖨 Print</button>
+              <button class="btn-add" style="margin:0" onclick="APP.openChecklistModal()">＋ Start Checklist</button>
+            </div>
+          </div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Type</th><th>Started</th><th>Target</th><th>Progress</th><th>Status</th><th style="width:70px"></th></tr></thead><tbody id="ob-body"></tbody></table></div>
+        </div>
+      </div>
+      <div id="m-assets" class="panel">
+        <div class="pg-hdr"><h2>💻 Assets &amp; Equipment</h2><p>Register, issue and return of THP property</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Register</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <input class="fi" type="text" id="as-search" placeholder="Search asset…" oninput="APP.renderAssets()" style="width:150px">
+              <select class="fi" id="as-status" onchange="APP.renderAssets()" style="width:140px"><option value="">All Status</option><option>Available</option><option>Assigned</option><option>Repair</option><option>Retired</option><option>Lost</option></select>
+              <button class="bsm bsm-teal" onclick="APP.renderAssets()">🔄 Refresh</button>
+              <button class="bsm bsm-navy" onclick="APP.exportAssets()">📊 CSV</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-assets','Asset Register')">🖨 Print</button>
+              <button class="btn-add" style="margin:0" onclick="APP.openAssetModal()">＋ New Asset</button>
+            </div>
+          </div>
+          <div id="as-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Tag</th><th>Asset</th><th>Category</th><th>Serial</th><th>Condition</th><th>Status</th><th>Assigned To</th><th style="width:150px">Actions</th></tr></thead><tbody id="as-body"></tbody></table></div>
+        </div>
       </div>
       <div id="m-orgchart" class="panel">
         <div class="pg-hdr"><h2>🌳 Org Chart</h2><p>Organogram — reporting lines, editable by HR</p></div>
@@ -811,36 +879,67 @@
           <div class="scr"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Category</th><th>Affected</th><th>Detail</th></tr></thead><tbody id="au-body"></tbody></table></div>
         </div>
       </div>
+      <div id="m-grants" class="panel">
+        <div class="pg-hdr"><h2>🎗 Grants Register</h2><p>Funding sources, periods and expiry tracking</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Grants</h4>
+            <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
+              <input class="fi" type="text" id="gr-search" placeholder="Search grant…" oninput="APP.renderGrants()" style="width:160px">
+              <select class="fi" id="gr-status" onchange="APP.renderGrants()" style="width:140px"><option value="">All Status</option><option>Active</option><option>Closing</option><option>Closed</option><option>Pipeline</option></select>
+              <button class="bsm bsm-teal" onclick="APP.renderGrants()">🔄 Refresh</button>
+              <button class="bsm bsm-navy" onclick="APP.exportGrants()">📊 CSV</button>
+              <button class="bsm bsm-gold" onclick="APP.printSection('m-grants','Grants Register')">🖨 Print</button>
+              <button class="btn-add" style="margin:0" onclick="APP.openGrantModal()">＋ New Grant</button>
+            </div>
+          </div>
+          <div id="gr-summary" class="contract-summary"></div>
+          <div class="scr"><table><thead><tr><th>Grant ID</th><th>Grant Name / Funding Source</th><th>PC/Local</th><th>Start</th><th>End</th><th>Months Left</th><th>Status</th><th style="width:70px"></th></tr></thead><tbody id="gr-body"></tbody></table></div>
+        </div>
+        <div style="padding:.6rem 1rem;background:var(--surf2);border-radius:10px;font-size:.78rem;color:var(--text2);line-height:1.6;margin-top:1rem">
+          <strong>💡 Reminders:</strong> 🔴 expired or ending within 90 days · 🟠 within 180 days · 🟢 beyond. Ernest and the Country Leader receive notices at the 180, 90 and 30-day marks, and the day after a grant ends.
+        </div>
+      </div>
       <div id="m-payroll" class="panel">
         <div class="pg-hdr"><h2>₵ Payroll</h2><p>Monthly salary processing, payslips and statutory returns</p></div>
         <div class="tcard"><div class="tcard-hdr"><h4>Monthly Run</h4>
           <div class="t-btns" style="flex-wrap:wrap;gap:.4rem">
             <input class="fi" type="month" id="m-pay-month" style="width:150px" onchange="APP.renderPayroll('m-')">
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('m-')">🔄 Recalculate</button>
-            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('m-')">💾 Save Run</button>
+            <button class="bsm bsm-navy" onclick="APP.savePayrollRun('m-')">💾 Save Draft</button>
+            <button class="bsm" id="m-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('m-')">📤 Submit for Approval</button>
+            <button class="bsm" id="m-pay-approve" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff;display:none" onclick="APP.approvePayrollRun('m-')">✅ Approve</button>
+            <button class="bsm" id="m-pay-return" style="background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;display:none" onclick="APP.returnPayrollRun('m-')">↩ Return</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('m-')">📊 CSV</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff" onclick="APP.exportBankAdvice('m-')">🏦 Bank Advice</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('m-')">🏛 Statutory</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('m-')">🧾 Preview Payslip</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')">📧 Email Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('m-')" title="Opens every calculated payslip, one per page, ready to print or save">🧾 Preview All Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
+          <div id="m-pay-status" style="padding:.6rem 1.3rem;font-size:.8rem;display:none;border-bottom:1px solid var(--border)"></div>
           <div id="m-pay-summary" class="contract-summary"></div>
           <div class="scr"><table><thead><tr><th>Staff</th><th>Basic</th><th>Allowances</th><th>Gross</th><th>SSNIT 5.5%</th><th>Provident Fund</th><th>PAYE</th><th>Net Pay</th><th>Employer Cost</th><th style="width:80px"></th></tr></thead><tbody id="m-pay-body"></tbody></table></div>
         </div>
         <div class="tcard" style="margin-top:1rem"><div class="tcard-hdr"><h4>Statutory Settings</h4><div class="t-btns"><button class="bsm bsm-navy" onclick="APP.savePaySettings('m-')">💾 Save Settings</button></div></div>
           <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:1rem 1.3rem;font-size:.78rem">
-            <label>SSNIT Employee % <input class="fi" type="number" step="0.1" id="m-ps-emp" style="width:80px"></label>
-            <label>SSNIT Employer % <input class="fi" type="number" step="0.1" id="m-ps-empr" style="width:80px"></label>
+            <label>SSNIT Total % <input class="fi" type="number" step="0.1" id="m-ps-emp" style="width:80px"></label>
+            <label>— of which deducted % <input class="fi" type="number" step="0.1" id="m-ps-empr" style="width:80px"></label>
             <label>SSNIT Ceiling (GH₵/mo) <input class="fi" type="number" id="m-ps-ceil" style="width:110px"></label>
-            <label>Provident Fund Max % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
-            <label>Extra Tax Relief % (Tier 2) <input class="fi" type="number" step="0.1" id="m-ps-relief" style="width:80px"></label>
+            <label>Provident Fund Total % <input class="fi" type="number" step="0.1" id="m-ps-t3" style="width:80px"></label>
+            <label>— of which deducted % <input class="fi" type="number" step="0.1" id="m-ps-relief" style="width:80px"></label>
           </div>
-          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup on each row.</div>
+          <div id="m-ps-applied" style="padding:0 1.3rem .6rem;font-size:.76rem;color:var(--text2)"></div>
+          <div style="padding:0 1.3rem 1rem;font-size:.72rem;color:var(--text3)">PAYE bands (2026 defaults): 490@0% · 110@5% · 130@10% · 3,166.67@17.5% · 16,000@25% · 30,520@30% · above@35%. Salaries are entered per staff via ✏ Setup. These rates appear here only — payslips show amounts, not percentages.</div>
         </div>
       </div>
       <!-- Manager Change Password -->
       <!-- Leave History (Agatha's decision log) -->
+      <div id="m-torate" class="panel">
+        <div class="pg-hdr"><h2>📝 Appraisals to Rate</h2><p>Self-assessments submitted by your team, awaiting your rating</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Awaiting My Rating</h4><div class="t-btns"><button class="bsm bsm-teal" onclick="APP.renderToRate()">🔄 Refresh</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Period</th><th>Self Score</th><th>Submitted</th><th style="width:110px"></th></tr></thead><tbody id="m-torate-body"></tbody></table></div>
+        </div>
+      </div>
       <div id="m-leave-history" class="panel">
         <div class="pg-hdr"><h2>📒 Leave History</h2><p>Record of all leave decisions you've made</p></div>
         <div class="tcard">
@@ -929,6 +1028,7 @@
       <button class="mob-tab" onclick="showPanel('m-clock','sb-mgr',event);APP._setMobTab('mob-nav-mgr',1)"><span class="mico">⏱</span>Clock</button>
       <button class="mob-tab" onclick="showPanel('m-mylogs','sb-mgr',event);APP.renderMgrMyLogs();APP._setMobTab('mob-nav-mgr',2)"><span class="mico">📝</span>Logs</button>
       <button class="mob-tab" onclick="showPanel('m-myleave','sb-mgr',event);APP._renderMgrLeaveBal();APP.renderMgrMyLeave();APP._setMobTab('mob-nav-mgr',3)"><span class="mico">🌴</span>Leave</button>
+      <button class="mob-tab" onclick="showPanel('m-payslip','sb-mgr',event);APP.renderMyPayslips('m-')"><span class="mico">🧾</span>Payslips</button>
       <button class="mob-tab" onclick="showPanel('m-leave','sb-mgr',event);APP.loadLeave();APP._setMobTab('mob-nav-mgr',4)"><span class="mico">🏖</span><span class="mob-notif" id="mob-badge-mgr-leave"></span><span id="mob-mgr-leave-text">Review</span></button>
       <button class="mob-tab" onclick="showPanel('m-leave-history','sb-mgr',event);APP.renderLeaveHistory();APP._setMobTab('mob-nav-mgr',5)"><span class="mico">📒</span>History</button>
       <button class="mob-tab" id="mob-mgr-report" onclick="showPanel('m-report','sb-mgr',event);APP.renderMgrReport();APP._setMobTab('mob-nav-mgr',6)"><span class="mico">📈</span>Reports</button>
@@ -945,6 +1045,7 @@
       <button class="mob-tab hr-tab" onclick="showPanel('m-assistant','sb-mgr',event);APP.initAssistant()"><span class="mico">✨</span>Ask HR</button>
       <button class="mob-tab hr-tab" onclick="showPanel('m-audit','sb-mgr',event);APP.renderAudit()"><span class="mico">🛡</span>Audit</button>
       <button class="mob-tab payroll-tab" onclick="showPanel('m-payroll','sb-mgr',event);APP.renderPayroll('m-')"><span class="mico">₵</span>Payroll</button>
+      <button class="mob-tab payroll-tab" onclick="showPanel('m-grants','sb-mgr',event);APP.renderGrants()"><span class="mico">🎗</span>Grants</button>
       <button class="mob-tab" onclick="showPanel('m-profile','sb-mgr',event);APP._renderProfileForm('m-');APP._setMobTab('mob-nav-mgr',7)"><span class="mico">👤</span>Profile</button>
       <button class="mob-tab cl-only-tab" id="mob-mgr-deleg" onclick="showPanel('m-delegation','sb-mgr',event);APP.renderDelegation('m-');APP._setMobTab('mob-nav-mgr',8)"><span class="mico">🔄</span>Delegate</button>
     </div>
@@ -970,6 +1071,9 @@
       <button class="nav-item" onclick="showPanel('a-contracts','sb-admin',event);APP.renderContracts('a-')"><span class="ico">📄</span>Contracts</button>
       <button class="nav-item" onclick="showPanel('a-hrfiles','sb-admin',event);APP.renderHRFiles('a-')"><span class="ico">🗂</span>Staff Files</button>
       <button class="nav-item" onclick="showPanel('a-priv','sb-admin',event);APP.renderPrivileges()"><span class="ico">🔑</span>Privileges</button>
+      <button class="nav-item" onclick="showPanel('a-settings','sb-admin',event);APP.renderOrgSettings()"><span class="ico">⚙️</span>Settings</button>
+      <button class="nav-item" onclick="showPanel('a-security','sb-admin',event);APP.renderSecurity()"><span class="ico">🛡</span>Security</button>
+      <button class="nav-item" onclick="showPanel('a-health','sb-admin',event);APP.renderHealth()"><span class="ico">💚</span>System Health</button>
       <button class="nav-item" onclick="showPanel('a-delegation','sb-admin',event);APP.renderDelegation()"><span class="ico">🔄</span>CL Delegation</button>
       <button class="nav-item" onclick="showPanel('a-sync','sb-admin',event)"><span class="ico">☁️</span>Google Sheets</button>
       <button class="nav-item" onclick="showPanel('a-chpw','sb-admin',event)"><span class="ico">🔑</span>Password</button>
@@ -1219,6 +1323,59 @@
           <strong>💡 Note:</strong> HR Suite &amp; Cases appear on manager dashboards; Payroll works for both manager and staff accounts. Changes take effect at the person's next login. If nothing is saved here, defaults apply (HR: Edna &amp; Agatha · Cases: Edna · Payroll: Ernest &amp; Emmanuel).
         </div>
       </div>
+      <div id="a-settings" class="panel">
+        <div class="pg-hdr"><h2>⚙️ System Settings</h2><p>Organisation details, working hours and leave entitlements</p></div>
+        <div class="tcard" style="padding:1rem 1.3rem">
+          <div class="hf-sec">ORGANISATION</div>
+          <div class="field"><label>Organisation Name (appears on reports and payslips)</label><input type="text" id="set-org-name"></div>
+          <div class="form-row" style="gap:.5rem">
+            <div class="field"><label>Address</label><input type="text" id="set-org-address"></div>
+            <div class="field"><label>Email</label><input type="text" id="set-org-email"></div>
+          </div>
+          <div class="hf-sec">WORKING HOURS</div>
+          <div class="form-row" style="gap:.5rem">
+            <div class="field"><label>Work Starts</label><input type="time" id="set-work-start"></div>
+            <div class="field"><label>Work Ends</label><input type="time" id="set-work-end"></div>
+            <div class="field"><label>Counts as Late After</label><input type="time" id="set-late"></div>
+            <div class="field"><label>Early Exit Before</label><input type="time" id="set-early"></div>
+          </div>
+          <div class="hf-sec">LEAVE ENTITLEMENTS (working days per year)</div>
+          <div class="form-row" style="gap:.5rem">
+            <div class="field"><label>Annual</label><input type="number" id="set-lv-annual"></div>
+            <div class="field"><label>Maternity</label><input type="number" id="set-lv-mat"></div>
+            <div class="field"><label>Paternity</label><input type="number" id="set-lv-pat"></div>
+            <div class="field"><label>Compassionate</label><input type="number" id="set-lv-comp"></div>
+          </div>
+          <div class="hf-sec">SESSION</div>
+          <div class="field" style="max-width:240px"><label>Sign-in valid for (hours)</label><input type="number" id="set-session"></div>
+          <div id="set-msg" style="font-size:.8rem;min-height:18px;margin:.5rem 0"></div>
+          <button class="btn-add" style="margin:0" onclick="APP.saveOrgSettings()">💾 Save Settings</button>
+        </div>
+      </div>
+
+      <div id="a-security" class="panel">
+        <div class="pg-hdr"><h2>🛡 Security</h2><p>Active sessions and sign-in history</p></div>
+        <div class="tcard" style="margin-bottom:1rem">
+          <div class="tcard-hdr"><h4>Active Sessions</h4><div class="t-btns">
+            <button class="bsm bsm-teal" onclick="APP.renderSecurity()">🔄 Refresh</button>
+            <button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.endAllSessions()">⏻ Sign Everyone Out</button></div></div>
+          <div class="scr"><table><thead><tr><th>Staff</th><th>Signed In</th><th>Expires</th><th style="width:110px"></th></tr></thead><tbody id="sec-sess-body"></tbody></table></div>
+        </div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Recent Sign-in Attempts</h4><div class="t-btns">
+            <select class="fi" id="sec-filter" onchange="APP.renderSecurity()" style="width:140px"><option value="">All</option><option value="failed">Failed only</option></select></div></div>
+          <div class="scr"><table><thead><tr><th>When</th><th>Staff ID</th><th>Name</th><th>Outcome</th><th>Detail</th></tr></thead><tbody id="sec-log-body"></tbody></table></div>
+        </div>
+      </div>
+
+      <div id="a-health" class="panel">
+        <div class="pg-hdr"><h2>💚 System Health</h2><p>At-a-glance check that everything is running</p></div>
+        <div class="tcard">
+          <div class="tcard-hdr"><h4>Status</h4><div class="t-btns"><button class="bsm bsm-teal" onclick="APP.renderHealth()">🔄 Run Checks</button></div></div>
+          <div id="health-body" style="padding:1rem 1.3rem"></div>
+        </div>
+      </div>
+
       <!-- Admin Change Password -->
       <div id="a-chpw" class="panel">
         <div class="pg-hdr"><h2>Change Admin Password</h2><p>Update the administrator account password</p></div>
@@ -1281,20 +1438,51 @@
 
 <!-- HR staff file modal -->
 <div class="overlay" id="hrfile-modal">
-  <div class="modal" style="max-width:640px;max-height:88vh;overflow-y:auto"><h3>🗂 Staff File</h3>
-    <div id="hf-staff-name" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
-    <div class="field"><label>Photo</label>
-      <div style="display:flex;align-items:center;gap:.6rem">
-        <img id="hf-photo-prev" src="" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:none;border:2px solid var(--border)">
-        <input type="file" id="hf-photo-file" accept="image/*" style="font-size:.78rem">
-        <button class="bsm bsm-teal" onclick="APP.uploadHRPhoto()">📤 Upload</button>
+  <div class="modal" style="max-width:720px;max-height:90vh;overflow-y:auto"><h3>🗂 Staff File</h3>
+    <div class="hf-head">
+      <div class="hf-photo-box">
+        <img id="hf-photo-prev" src="" alt="" style="display:none">
+        <div id="hf-photo-ph" class="hf-photo-ph">👤</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="hf-staff-name" style="font-weight:700;font-size:1.02rem;color:var(--teal)"></div>
+        <div id="hf-staff-sub" style="font-size:.78rem;color:var(--text2);margin-top:2px"></div>
+        <div style="display:flex;align-items:center;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
+          <input type="file" id="hf-photo-file" accept="image/*" style="font-size:.74rem;max-width:190px">
+          <button class="bsm bsm-teal" onclick="APP.uploadHRPhoto()">📤 Upload Passport Photo</button>
+        </div>
       </div>
     </div>
     <input type="hidden" id="hf-photo-url">
+
+    <div class="hf-sec">EMPLOYMENT DETAILS</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Employee ID</label><input type="text" id="hf-empid" readonly style="opacity:.75"></div>
+      <div class="field"><label>Department / Unit</label><input type="text" id="hf-dept"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Position / Job Title</label><input type="text" id="hf-position" placeholder="e.g. Transport Officer"></div>
+      <div class="field"><label>Employment Type</label><select id="hf-emptype" class="fi"><option>Staff</option><option>Intern</option><option>National Service</option><option>Volunteer</option><option>Consultant</option></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Date Joined</label><input type="date" id="hf-joined"></div>
+      <div class="field"><label>Reporting Manager</label><select id="hf-manager" class="fi"></select></div>
+    </div>
+
+    <div class="hf-sec">PROBATION</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Probation Status</label><select id="hf-probst" class="fi"><option>N/A</option><option>On Probation</option><option>Confirmed</option><option>Extended</option></select></div>
+      <div class="field"><label>Probation Ends</label><input type="date" id="hf-probend"></div>
+      <div class="field"><label>Date Confirmed</label><input type="date" id="hf-confirmed"></div>
+    </div>
+    <div class="hf-hint">Probation is usually 3–6 months from the date joined. Set the status to <strong>Confirmed</strong> once the review is complete — confirmations due are flagged in the weekly renewals digest.</div>
+
+    <div class="hf-sec">PERSONAL DETAILS</div>
     <div class="form-row" style="gap:.5rem">
       <div class="field"><label>Date of Birth</label><input type="date" id="hf-dob"></div>
       <div class="field"><label>Phone</label><input type="text" id="hf-phone" placeholder="e.g. 024 XXX XXXX"></div>
     </div>
+    <div class="field"><label>Residential Address</label><textarea id="hf-address" rows="2" placeholder="House number, street, area, town"></textarea></div>
     <div class="field"><label>Emergency Contact (name &amp; phone)</label><input type="text" id="hf-emergency"></div>
     <div class="form-row" style="gap:.5rem">
       <div class="field"><label>Next of Kin</label><input type="text" id="hf-nok"></div>
@@ -1302,18 +1490,172 @@
     </div>
     <div class="field"><label>SSNIT Number</label><input type="text" id="hf-ssnit"></div>
     <div class="field"><label>Qualifications</label><textarea id="hf-quals" rows="2" placeholder="e.g. BSc Accounting (UG, 2015); ICA Part II"></textarea></div>
-    <div class="field"><label>HR Notes</label><textarea id="hf-notes" rows="2"></textarea></div>
-    <div class="field"><label>Documents</label>
-      <div id="hf-docs" style="margin-bottom:.4rem"></div>
-      <input type="file" id="hf-doc-file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="font-size:.78rem">
-      <button class="bsm bsm-teal" style="margin-top:.3rem" onclick="APP.uploadHRDoc()">📤 Upload Document</button>
-    </div>
+
+    <div class="hf-sec">DOCUMENTS</div>
+    <div class="hf-hint"><strong>Please upload:</strong> signed employment contract · offer/appointment letter · Ghana Card or passport · SSNIT card · academic certificates · professional certificates · CV · passport photograph · signed code of conduct &amp; safeguarding policy · reference letters · probation confirmation letter.<br>
+      <span style="color:var(--text3)">PDF or image, one file at a time, under 5 MB. Large scans take 30–60 seconds — please wait for the confirmation before closing.</span></div>
+    <div id="hf-docs" style="margin-bottom:.4rem"></div>
+    <input type="file" id="hf-doc-file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="font-size:.78rem">
+    <button class="bsm bsm-teal" style="margin-top:.3rem" onclick="APP.uploadHRDoc()">📤 Upload Document</button>
+
     <input type="hidden" id="hf-id"><input type="hidden" id="hf-docs-json" value="[]">
     <div id="hf-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
     <div class="modal-foot">
       <button class="btn-cancel" onclick="closeModal('hrfile-modal')">Cancel</button>
       <button class="btn-add" style="margin:0" onclick="APP.saveHRFile()">💾 Save File</button>
     </div>
+  </div>
+</div>
+
+<!-- Manager rating modal -->
+<div class="overlay" id="mgrate-modal">
+  <div class="modal" style="max-width:860px;max-height:90vh;overflow-y:auto"><h3>📊 Line Manager Review</h3>
+    <div id="mr-who" style="font-weight:600;color:var(--teal);margin-bottom:.3rem"></div>
+    <div class="hf-hint">Rate each item 1–5 against the same KPIs the staff member rated. Their self-rating is shown for reference but cannot be changed. The final rating for each item is the average of both.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:.8rem 0 .4rem">
+      <div style="font-size:.8rem;font-weight:700;color:var(--teal);letter-spacing:.4px">SECTION A — KEY PERFORMANCE AREAS</div>
+      <div style="font-size:.78rem">Self <strong id="mr-self">0.00</strong> · Manager <strong id="mr-mgr">0.00</strong> · Final <strong id="mr-final">0.00</strong></div>
+    </div>
+    <div id="mr-kpas"></div>
+    <div class="hf-sec">FINAL ASSESSMENT</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Staff self-assessment</label><input type="text" id="mr-selfoverall" readonly style="opacity:.75"></div>
+      <div class="field"><label>Manager's overall assessment</label><select id="mr-mgroverall" class="fi">
+        <option value="0">— Select —</option>
+        <option value="1">1 · Unsatisfactory Performance</option>
+        <option value="2">2 · Development Needed</option>
+        <option value="3">3 · Meets Role Requirements</option>
+        <option value="4">4 · Exceeds Role Requirements</option>
+        <option value="5">5 · Exceptional Performance</option></select></div>
+    </div>
+    <div class="field"><label>Line Manager's Comments</label><textarea id="mr-comment" rows="3"></textarea></div>
+    <div class="hf-sec">SECTION B — JOB &amp; CAREER GROWTH PLAN</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Key Strengths</label><textarea id="mr-strengths" rows="2"></textarea></div>
+      <div class="field"><label>Areas for Development</label><textarea id="mr-devareas" rows="2"></textarea></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Training Needs</label><textarea id="mr-training" rows="2"></textarea></div>
+      <div class="field"><label>Support Required from THP</label><textarea id="mr-support" rows="2"></textarea></div>
+    </div>
+    <div class="field"><label>Objectives for the Next Period</label><textarea id="mr-next" rows="2"></textarea></div>
+    <input type="hidden" id="mr-id"><div id="mr-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="closeModal('mgrate-modal')">Cancel</button>
+      <button class="bsm bsm-gold" onclick="APP.saveMgrRating(false)">💾 Save Draft</button>
+      <button class="btn-add" style="margin:0" onclick="APP.saveMgrRating(true)">✅ Complete &amp; Send to HR</button>
+    </div>
+  </div>
+</div>
+
+<!-- Checklist modal -->
+<div class="overlay" id="checklist-modal">
+  <div class="modal" style="max-width:760px;max-height:90vh;overflow-y:auto"><h3 id="ob-title">🚀 Checklist</h3>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Staff</label><select id="ob-staff" class="fi"></select></div>
+      <div class="field"><label>Type</label><select id="ob-kind" class="fi" onchange="APP._obLoadTemplate()"><option value="onboarding">Onboarding (joiner)</option><option value="offboarding">Offboarding (leaver)</option></select></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Start Date</label><input type="date" id="ob-start"></div>
+      <div class="field"><label>Target Completion</label><input type="date" id="ob-target"></div>
+    </div>
+    <div style="font-size:.8rem;font-weight:700;color:var(--teal);margin:.8rem 0 .4rem;letter-spacing:.4px">CHECKLIST ITEMS</div>
+    <div id="ob-items"></div>
+    <button class="bsm bsm-teal" style="margin-bottom:.7rem" onclick="APP.addChecklistItem()">＋ Add item</button>
+    <div class="field"><label>Notes</label><textarea id="ob-notes" rows="2"></textarea></div>
+    <input type="hidden" id="ob-id"><div id="ob-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('checklist-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveChecklist()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Asset modal -->
+<div class="overlay" id="asset-modal">
+  <div class="modal" style="max-width:760px;max-height:90vh;overflow-y:auto"><h3>💻 Asset Record</h3>
+    <div class="hf-sec">IDENTIFICATION</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Asset Tag</label><input type="text" id="as-id" placeholder="e.g. THP-LT-014"></div>
+      <div class="field"><label>Category</label>
+        <select id="as-cat" class="fi" onchange="APP._asCatChange()"><option>IT Equipment</option><option>Furniture</option><option>Vehicle</option><option>Phone</option><option>Office Equipment</option><option>Generator / Power</option><option>Field Equipment</option><option>Other</option></select>
+        <input type="text" id="as-cat-other" placeholder="Type the category" style="display:none;margin-top:.35rem">
+      </div>
+    </div>
+    <div class="field"><label>Asset Name / Description</label><input type="text" id="as-name" placeholder="e.g. HP EliteBook 840 G8"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Make</label><input type="text" id="as-make"></div>
+      <div class="field"><label>Model</label><input type="text" id="as-model"></div>
+      <div class="field"><label>Serial Number</label><input type="text" id="as-serial"></div>
+    </div>
+    <div class="hf-sec">ACQUISITION &amp; FUNDING</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Purchase Date</label><input type="date" id="as-pdate"></div>
+      <div class="field"><label>Value (GH₵)</label><input type="number" step="0.01" id="as-value"></div>
+      <div class="field"><label>Supplier</label><input type="text" id="as-supplier"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Invoice / PO No.</label><input type="text" id="as-invoice"></div>
+      <div class="field"><label>Funding Source</label><input type="text" id="as-funding" placeholder="e.g. Core, Grant"></div>
+      <div class="field"><label>Grant ID</label><input type="text" id="as-grant" placeholder="e.g. 1044"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Warranty Ends</label><input type="date" id="as-warranty"></div>
+      <div class="field"><label>Useful Life (years)</label><input type="number" id="as-life" placeholder="e.g. 4"></div>
+      <div class="field"><label>Insured?</label><select id="as-insured" class="fi"><option value="false">No</option><option value="true">Yes</option></select></div>
+    </div>
+    <div class="hf-sec">STATUS &amp; LOCATION</div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Condition</label><select id="as-cond" class="fi"><option>New</option><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
+      <div class="field"><label>Status</label><select id="as-st" class="fi"><option>Available</option><option>Assigned</option><option>Repair</option><option>Retired</option><option>Lost</option><option>Disposed</option></select></div>
+      <div class="field"><label>Location</label><input type="text" id="as-loc" placeholder="e.g. Head Office, Store"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Last Physically Verified</label><input type="date" id="as-verified"></div>
+      <div class="field"><label>Disposal Date</label><input type="date" id="as-ddate"></div>
+      <div class="field"><label>Disposal Method</label><input type="text" id="as-dmethod" placeholder="Sold / Donated / Scrapped"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea id="as-notes" rows="2"></textarea></div>
+    <input type="hidden" id="as-edit-id"><div id="as-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('asset-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveAsset()">💾 Save</button></div>
+  </div>
+</div>
+
+<!-- Issue / return modal -->
+<div class="overlay" id="issue-modal">
+  <div class="modal"><h3 id="iss-title">📤 Issue Asset</h3>
+    <div id="iss-asset" style="font-weight:600;color:var(--teal);margin-bottom:.8rem"></div>
+    <div class="field" id="iss-staff-wrap"><label>Issue to</label><select id="iss-staff" class="fi"></select></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Condition</label><select id="iss-cond" class="fi"><option>Good</option><option>Fair</option><option>Poor</option><option>Damaged</option></select></div>
+      <div class="field"><label>Date</label><input type="date" id="iss-date"></div>
+    </div>
+    <div class="field"><label>Note</label><textarea id="iss-note" rows="2" placeholder="Accessories included, visible marks, etc."></textarea></div>
+    <input type="hidden" id="iss-id"><input type="hidden" id="iss-action">
+    <div style="font-size:.74rem;color:var(--text3);line-height:1.5">An email record is sent to HR and to the staff member, so the handover is traceable even if the system is unavailable.</div>
+    <div id="iss-msg" style="font-size:.8rem;min-height:16px;margin-top:4px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('issue-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.confirmIssue()">✅ Confirm</button></div>
+  </div>
+</div>
+
+<!-- Grant modal -->
+<div class="overlay" id="grant-modal">
+  <div class="modal"><h3>🎗 Grant</h3>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Grant ID (from IMOU)</label><input type="text" id="gr-id" placeholder="e.g. 1044"></div>
+      <div class="field"><label>PC / Local</label><select id="gr-pc" class="fi"><option>AU</option><option>CH</option><option>SE</option><option>US</option><option>DE</option><option>UK</option><option>Local</option><option>Other</option></select></div>
+    </div>
+    <div class="field"><label>Grant Name / Funding Source</label><input type="text" id="gr-name"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Start Date</label><input type="date" id="gr-start"></div>
+      <div class="field"><label>End Date</label><input type="date" id="gr-end"></div>
+    </div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Amount</label><input type="number" step="0.01" id="gr-amount"></div>
+      <div class="field"><label>Currency</label><select id="gr-curr" class="fi"><option>USD</option><option>GHS</option><option>EUR</option><option>GBP</option><option>AUD</option><option>CHF</option><option>SEK</option></select></div>
+      <div class="field"><label>Status</label><select id="gr-st" class="fi"><option>Active</option><option>Closing</option><option>Closed</option><option>Pipeline</option></select></div>
+    </div>
+    <div class="field"><label>Focal Person</label><input type="text" id="gr-focal"></div>
+    <div class="field"><label>Notes</label><textarea id="gr-notes" rows="2"></textarea></div>
+    <input type="hidden" id="gr-edit-id"><div id="gr-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('grant-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveGrant()">💾 Save</button></div>
   </div>
 </div>
 
@@ -1336,7 +1678,10 @@
       <div class="field"><label>Posted</label><input type="date" id="vc-posted"></div>
       <div class="field"><label>Closing</label><input type="date" id="vc-closing"></div>
     </div>
-    <div class="field"><label>Description / Requirements</label><textarea id="vc-desc" rows="3"></textarea></div>
+    <div class="field"><label>Job Description — purpose, duties and responsibilities</label>
+      <textarea id="vc-jd" rows="8" placeholder="Paste the full job description here.&#10;&#10;JOB PURPOSE&#10;…&#10;&#10;KEY DUTIES AND RESPONSIBILITIES&#10;1. …&#10;2. …&#10;&#10;REPORTING LINE&#10;…"></textarea></div>
+    <div class="field"><label>Qualifications &amp; Requirements</label>
+      <textarea id="vc-desc" rows="5" placeholder="Minimum qualification, years of experience, skills, competencies, language, licences…"></textarea></div>
     <input type="hidden" id="vc-id"><div id="vc-msg" style="font-size:.8rem;min-height:16px"></div>
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('vacancy-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveVacancy()">💾 Save</button></div>
   </div>
@@ -1384,6 +1729,16 @@
     </div>
     <div id="ma-kpas"></div>
     <div class="field"><label>My Achievements / Comments</label><textarea id="ma-comment" rows="3" placeholder="Summarise your key achievements this period."></textarea></div>
+    <div class="hf-sec">FINAL ASSESSMENT</div>
+    <div class="field"><label>My overall self-assessment</label><select id="ma-overall" class="fi">
+      <option value="0">— Select —</option>
+      <option value="1">1 · Unsatisfactory Performance</option>
+      <option value="2">2 · Development Needed</option>
+      <option value="3">3 · Meets Role Requirements</option>
+      <option value="4">4 · Exceeds Role Requirements</option>
+      <option value="5">5 · Exceptional Performance</option></select></div>
+    <div class="hf-sec">SECTION B — JOB &amp; CAREER GROWTH PLAN</div>
+    <div class="field"><label>My Career Goals</label><textarea id="ma-career" rows="2" placeholder="Where I would like to grow over the next 1–3 years"></textarea></div>
     <div class="field"><label>Training / Development I Need</label><textarea id="ma-dev" rows="2"></textarea></div>
     <input type="hidden" id="ma-id">
     <div style="font-size:.74rem;color:var(--text3);line-height:1.5">1 Unsatisfactory · 2 Below Criteria · 3 Achieved Criteria · 4 Above Criteria · 5 Exceeded All Criteria</div>
@@ -1456,19 +1811,42 @@
 
 <!-- HR case modal -->
 <div class="overlay" id="case-modal">
-  <div class="modal"><h3>⚖ HR Case</h3>
-    <div class="field"><label>Staff</label><select id="cs-staff" class="fi"></select></div>
+  <div class="modal" style="max-width:820px;max-height:90vh;overflow-y:auto"><h3>⚖ Case File</h3>
+    <div class="hf-hint"><strong>Confidential.</strong> Visible to HR and Admin only. Every change is written to the audit trail with date and time. Follow each stage in order and attach the supporting document at each step.</div>
     <div class="form-row" style="gap:.5rem">
-      <div class="field"><label>Type</label><select id="cs-type" class="fi"><option>Disciplinary</option><option>Grievance</option><option>Warning</option><option>Commendation</option><option>Other</option></select></div>
-      <div class="field"><label>Status</label><select id="cs-status" class="fi"><option>Open</option><option>Under Review</option><option>Closed</option></select></div>
+      <div class="field"><label>Case Reference</label><input type="text" id="cs-ref" placeholder="auto" readonly style="opacity:.75"></div>
+      <div class="field"><label>Staff Member</label><select id="cs-staff" class="fi"></select></div>
     </div>
     <div class="form-row" style="gap:.5rem">
-      <div class="field"><label>Opened</label><input type="date" id="cs-opened"></div>
-      <div class="field"><label>Closed (optional)</label><input type="date" id="cs-closed"></div>
+      <div class="field"><label>Case Type</label><select id="cs-type" class="fi"><option>Complaint / Grievance</option><option>Disciplinary</option><option>Misconduct</option><option>Performance Concern</option><option>Safeguarding</option><option>Commendation</option><option>Other</option></select></div>
+      <div class="field"><label>Severity</label><select id="cs-sev" class="fi"><option>Minor</option><option>Moderate</option><option>Serious</option><option>Gross Misconduct</option></select></div>
+      <div class="field"><label>Status</label><select id="cs-status" class="fi"><option>Open</option><option>Under Investigation</option><option>Hearing Scheduled</option><option>Decision Issued</option><option>Under Appeal</option><option>Closed</option></select></div>
     </div>
-    <div class="field"><label>Summary</label><textarea id="cs-summary" rows="2"></textarea></div>
-    <div class="field"><label>Outcome</label><textarea id="cs-outcome" rows="2"></textarea></div>
-    <input type="hidden" id="cs-id"><div id="cs-msg" style="font-size:.8rem;min-height:16px"></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Raised By</label><input type="text" id="cs-raised" placeholder="Name or unit"></div>
+      <div class="field"><label>Date Opened</label><input type="date" id="cs-opened"></div>
+      <div class="field"><label>Date Closed</label><input type="date" id="cs-closed"></div>
+    </div>
+    <div class="field"><label>Summary of Allegation / Complaint</label><textarea id="cs-summary" rows="3"></textarea></div>
+
+    <div class="hf-sec">CASE STAGES</div>
+    <div class="hf-hint">Tick each stage as it is completed and record the date. The process must follow natural justice: the employee is told the allegation, given a chance to respond, heard before a decision, and offered a right of appeal.</div>
+    <div id="cs-stages"></div>
+
+    <div class="hf-sec">SUPPORTING DOCUMENTS</div>
+    <div class="hf-hint">Attach: written complaint · investigation report · query letter · employee's written response · notice of hearing · hearing minutes · decision/outcome letter · appeal letter and appeal outcome.</div>
+    <div id="cs-docs" style="margin-bottom:.4rem"></div>
+    <input type="file" id="cs-doc-file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="font-size:.78rem">
+    <button class="bsm bsm-teal" style="margin-top:.3rem" onclick="APP.uploadCaseDoc()">📤 Upload Document</button>
+
+    <div class="hf-sec">OUTCOME</div>
+    <div class="field"><label>Decision / Outcome</label><textarea id="cs-outcome" rows="2"></textarea></div>
+    <div class="form-row" style="gap:.5rem">
+      <div class="field"><label>Appeal Lodged?</label><select id="cs-appeal" class="fi"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Appeal Outcome</label><input type="text" id="cs-appealout"></div>
+    </div>
+    <input type="hidden" id="cs-id"><input type="hidden" id="cs-docs-json" value="[]">
+    <div id="cs-msg" style="font-size:.8rem;min-height:16px"></div>
     <div class="modal-foot"><button class="btn-cancel" onclick="closeModal('case-modal')">Cancel</button><button class="btn-add" style="margin:0" onclick="APP.saveCase()">💾 Save</button></div>
   </div>
 </div>
@@ -1491,7 +1869,11 @@
         </div>
       </div>
     </div>
-    <div class="field"><label>Allowances — one per line: Name : Amount : t (taxable) or n</label><textarea id="pm-allow" rows="3" placeholder="Transport : 400 : t&#10;Data bundle : 150 : n"></textarea></div>
+    <div class="hf-sec">ALLOWANCES</div>
+    <div class="hf-hint">Each allowance is listed by name on the payslip. Mark it <strong>Taxable</strong> or <strong>Non-taxable</strong> — non-taxable amounts are paid in full and excluded from the PAYE calculation.</div>
+    <div id="pm-allow-rows"></div>
+    <button class="bsm bsm-teal" style="margin-bottom:.6rem" onclick="APP.addAllowRow()">＋ Add Allowance</button>
+    <textarea id="pm-allow" style="display:none"></textarea>
     <div class="field"><label>Designation (shown on payslip)</label><input type="text" id="pm-designation" placeholder="e.g. Transport Officer"></div>
     <div style="font-size:.74rem;font-weight:700;color:var(--teal);margin:.6rem 0 .3rem;letter-spacing:.4px">EARNINGS (this month)</div>
     <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
@@ -1501,7 +1883,7 @@
     </div>
     <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
       <div class="field" style="flex:1;min-width:120px"><label>Over Time Pay</label><input type="number" step="0.01" id="pm-overtime" value="0"></div>
-      <div class="field" style="flex:1;min-width:120px"><label>Fuel Allowance</label><input type="number" step="0.01" id="pm-fuel" value="0"></div>
+      <input type="hidden" id="pm-fuel" value="0">
     </div>
     <div style="font-size:.74rem;font-weight:700;color:var(--red);margin:.6rem 0 .3rem;letter-spacing:.4px">OTHER DEDUCTIONS</div>
     <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
