@@ -180,18 +180,11 @@ function closeAllSB(){
 function closeModal(id){$(id).classList.remove('open');}
 function selectLeaveType(el){APP.selectLeave(el);}
 
-/* ── THEME ── */
-function toggleTheme(){
-  const d=document.documentElement;
-  const isDark=d.getAttribute('data-theme')==='dark';
-  d.setAttribute('data-theme',isDark?'light':'dark');
-  $('theme-toggle').textContent=isDark?'🌙':'☀️';
-  localStorage.setItem('thp_theme',isDark?'light':'dark');
-}
+/* ── THEME — light only ── */
+function toggleTheme(){ /* dark mode retired; kept so old handlers do not error */ }
 (function initTheme(){
-  const t=localStorage.getItem('thp_theme')||'dark';
-  document.documentElement.setAttribute('data-theme',t);
-  const btn=$('theme-toggle'); if(btn) btn.textContent=t==='dark'?'☀️':'🌙';
+  document.documentElement.setAttribute('data-theme','light');
+  try{localStorage.removeItem('thp_theme');}catch(e){}
 })();
 
 /* ── LOADING OVERLAY ── */
@@ -200,8 +193,20 @@ function showLoader(msg){
   if(msg){const t=$('lo-text');if(t)t.textContent=msg;}
   el.classList.remove('fade-out');
   el.classList.add('active');
+  // Never let a failed network call leave someone staring at this screen.
+  clearTimeout(window._loaderGuard);
+  window._loaderGuard=setTimeout(()=>{
+    if(el.classList.contains('active')){
+      hideLoader();
+      const online=navigator.onLine;
+      toast(online
+        ? 'That took too long. Some data may not have loaded — try refreshing.'
+        : 'No internet connection. Check your network and refresh.','err');
+    }
+  },20000);
 }
 function hideLoader(){
+  clearTimeout(window._loaderGuard);
   const el=$('loading-overlay');if(!el)return;
   el.classList.add('fade-out');
   setTimeout(()=>{el.classList.remove('active','fade-out');},450);
@@ -217,9 +222,10 @@ function hideLoader(){
 ═══════════════════════════════════════════════ */
 
 /* ── SUPABASE CONFIG — UPDATE THESE ── */
+/* ── SUPABASE CONFIG ── */
 const SUPABASE={
-  URL:'https://jhpqzkwzxprsnaczkyjq.supabase.co',  // ← paste your Project URL
-  KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpocHF6a3d6eHByc25hY3preWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTE4NTMsImV4cCI6MjA4OTc2Nzg1M30.GKJz9EhxGP1wTQBiufLoVLxWOstx-9Z0MPWHxj2c8VM',                                 // ← paste your anon key
+  URL:'https://jhpqzkwzxprsnaczkyjq.supabase.co',
+  KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpocHF6a3d6eHByc25hY3preWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxOTE4NTMsImV4cCI6MjA4OTc2Nzg1M30.GKJz9EhxGP1wTQBiufLoVLxWOstx-9Z0MPWHxj2c8VM',
 };
 
 /* ── GAS config (kept for email notifications only) ── */
@@ -288,7 +294,8 @@ const API={
     if(id==='ADMIN01'){
       const settings=await this._get('settings','key=eq.admin_password');
       const adminPass=(settings&&settings[0])?settings[0].value:'admin123';
-      if(String(pass)!==String(adminPass))return{success:false,error:'Incorrect password'};
+      if(String(pass)!==String(adminPass)){this.logLogin('ADMIN01','Administrator','failed','Incorrect password');return{success:false,error:'Incorrect password'};}
+      this.logLogin('ADMIN01','Administrator','success','');
       const token=this._genToken();
       await this._cleanSessions(id);
       await this._insert('sessions',{staff_id:id,token,expires_at:new Date(Date.now()+12*3600000).toISOString()});
@@ -297,9 +304,14 @@ const API={
 
     // Staff login
     const rows=await this._get('staff','id=eq.'+encodeURIComponent(id));
-    if(!rows||!rows.length)return{success:false,error:'Staff ID not found'};
+    if(!rows||!rows.length){this.logLogin(id,'','failed','Staff ID not found');return{success:false,error:'Staff ID not found'};}
     const s=rows[0];
-    if(String(s.password)!==String(pass))return{success:false,error:'Incorrect password'};
+    if(s.active===false){
+      this.logLogin(id,s.name,'locked','Account deactivated');
+      return{success:false,error:'This account has been deactivated. Please contact the Administrator.'};
+    }
+    if(String(s.password)!==String(pass)){this.logLogin(id,s.name,'failed','Incorrect password');return{success:false,error:'Incorrect password'};}
+    this.logLogin(id,s.name,'success','');
     const token=this._genToken();
     await this._cleanSessions(id);
     await this._insert('sessions',{staff_id:id,token,expires_at:new Date(Date.now()+12*3600000).toISOString()});
@@ -311,6 +323,13 @@ const API={
     };
   },
 
+  async logLogin(staffId,name,outcome,reason){
+    try{
+      await this._insert('login_log',{id:'LG'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+        staff_id:staffId||'',name:name||'',outcome:outcome||'success',reason:reason||'',
+        created_at:new Date().toISOString()});
+    }catch(e){}
+  },
   async validateSession(id,token){
     if(!id||!token)return{success:false,error:'No session'};
     const rows=await this._get('sessions','staff_id=eq.'+encodeURIComponent(id)+'&token=eq.'+encodeURIComponent(token));
@@ -387,6 +406,33 @@ const API={
     if(r!==null){this.showBar('synced','Contract saved ✓');return{success:true};}
     this.showBar('error','Save failed');return{success:false};
   },
+  /* ── Secure access to RLS-locked tables (Phase 1) ──
+     payroll_staff, payroll_runs, payroll_settings and hr_cases are
+     locked at the database level, so the browser key cannot reach
+     them. These go through Apps Script, which holds the service key
+     server-side and verifies the caller's session before responding. ── */
+  _sessTok(){
+    try{const sess=JSON.parse(localStorage.getItem('thp_session')||'null');return sess?.token||'';}catch(e){return '';}
+  },
+  async secureGet(table,query){
+    const u=APP?.user;if(!u)return null;
+    const r=await this.gasPost({action:'secureGet',table,query:query||'',staffId:u.id,token:this._sessTok()});
+    if(!r||!r.success){this.lastError=(r&&r.error)||'Secure read failed';return null;}
+    return r.rows||[];
+  },
+  async secureSave(table,rows){
+    const u=APP?.user;if(!u)return null;
+    const r=await this.gasPost({action:'secureSave',table,rows,staffId:u.id,token:this._sessTok()});
+    if(!r||!r.success){this.lastError=(r&&r.error)||'Secure save failed';return null;}
+    return r.rows||[];
+  },
+  async secureDelete(table,query){
+    const u=APP?.user;if(!u)return null;
+    const r=await this.gasPost({action:'secureDelete',table,query,staffId:u.id,token:this._sessTok()});
+    if(!r||!r.success){this.lastError=(r&&r.error)||'Secure delete failed';return null;}
+    return true;
+  },
+
   /* ── HR Staff Files ── */
   async getHRFile(id){
     const r=await this._get('hr_staff_files','staff_id=eq.'+encodeURIComponent(id));
@@ -621,7 +667,9 @@ const API={
       staff[s.id]={name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',pass:s.password,
         color:s.avatar_color||'',email:s.email||'',gender:s.gender||'male',
         supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||'',
-        contractStart:s.contract_start||'',contractEnd:s.contract_end||''};
+        contractStart:s.contract_start||'',contractEnd:s.contract_end||'',
+        position:s.position||'',employmentType:s.employment_type||'Staff',dateJoined:s.date_joined||'',
+        active:s.active!==false,exitDate:s.exit_date||'',exitReason:s.exit_reason||''};
     });
 
     // Transform attendance rows
@@ -1088,6 +1136,7 @@ class App{
         const mn=$('mob-mgr-name');if(mn)mn.textContent=this.user.name;
         this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
+        if($('mgr-role'))$('mgr-role').textContent=roleLabel(this.user.role);
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
         this._applyPrivileges(id);this._checkContractReminders();
@@ -1104,6 +1153,7 @@ class App{
         const mn=$('mob-st-name');if(mn)mn.textContent=this.user.name;
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
         this.renderStaffFeed();this.checkBirthdayWish();
+        this.renderMyPayslips();
         (this._applyPrivileges?this:APP)._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
@@ -2061,7 +2111,7 @@ class App{
     if(!ent.length){grid.innerHTML='<div class="empty"><div class="empty-ico">👥</div>No staff</div>';return;}
     grid.innerHTML=ent.map(([id,s])=>{
       const col=s.color||avColor(s.name);
-      return`<div class="scard"><div class="scard-top"><div class="av" style="background:${col}">${ini(s.name)}</div><div class="s-info"><div class="s-name">${s.name}</div><div class="s-id">${id}</div></div></div><div class="s-meta"><span class="s-unit">${s.unit||'—'}</span><span class="s-role-badge role-${s.role||'staff'}">${roleLabel(s.role)}</span></div><div class="scard-btns"><button class="btn-edit" onclick="APP.openEdit('${id}')">✏ Edit</button><button class="btn-edit" style="background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.2);color:var(--gold)" onclick="APP.adminResetPass('${id}')">🔑 Reset</button><button class="btn-del" onclick="APP.delStaff('${id}')">🗑</button></div></div>`;
+      return`<div class="scard"${s.active===false?' style="opacity:.55"':''}><div class="scard-top"><div class="av" style="background:${col}">${ini(s.name)}</div><div class="s-info"><div class="s-name">${s.name}</div><div class="s-id">${id}</div></div></div><div class="s-meta"><span class="s-unit">${s.unit||'—'}</span><span class="s-role-badge role-${s.role||'staff'}">${roleLabel(s.role)}</span></div><div class="scard-btns"><button class="btn-edit" onclick="APP.openEdit('${id}')">✏ Edit</button><button class="btn-edit" style="background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.2);color:var(--gold)" onclick="APP.adminResetPass('${id}')">🔑 Reset</button><button class="btn-edit" style="background:${s.active===false?'rgba(22,163,74,.12);color:#16a34a':'rgba(100,116,139,.12);color:var(--text2)'}" onclick="APP.toggleStaffActive('${id}')">${s.active===false?'↩ Reactivate':'⏸ Deactivate'}</button><button class="btn-del" onclick="APP.delStaff('${id}')">🗑</button></div></div>`;
     }).join('');
   }
   async addStaff(){
@@ -2242,6 +2292,11 @@ class App{
 
   /* ── Manager reports ── */
   _mgrRepStaffSearch(){return ($('mgr-rep-staff')?.value||'').trim().toLowerCase();}
+  /* Search box must re-run whichever report is selected */
+  onRepSearch(){
+    clearTimeout(this._repT);
+    this._repT=setTimeout(()=>this.renderMgrReport(),250);
+  }
   _mgrRepFilter(recs){
     const from=$('mgr-rep-from')?.value,to=$('mgr-rep-to')?.value;
     if(from)recs=recs.filter(r=>new Date(r.date||r.in)>=new Date(from));
@@ -2358,6 +2413,69 @@ class App{
         <td>${this._stars(r.rating)}</td><td style="font-size:.76rem">${r.applied_date?String(r.applied_date).slice(0,10):'—'}</td></tr>`).join('');
       return;
     }
+    if(type==='individual'){
+      const q2=this._mgrRepStaffSearch();
+      hdr.innerHTML='<th style="width:32%">Item</th><th>Detail</th>';
+      if(!q2){body.innerHTML='<tr><td colspan="2"><div class="empty"><div class="empty-ico">👤</div>Type a staff ID or name in the search box above to pull that person\'s full record</div></td></tr>';return;}
+      const hit=Object.entries(this.staff).find(([i,st])=>st.role!=='admin'&&(i.toLowerCase().includes(q2)||(st.name||'').toLowerCase().includes(q2)));
+      if(!hit)return none(2);
+      const [sid,st]=hit;
+      const f=(await API._get('hr_staff_files','staff_id=eq.'+encodeURIComponent(sid))||[])[0]||{};
+      const lv=this.leave.filter(l=>l.staffId===sid);
+      const tr=await API._get('training_records','staff_id=eq.'+encodeURIComponent(sid))||[];
+      const ap=await API._get('performance_appraisals','staff_id=eq.'+encodeURIComponent(sid)+'&order=review_date.desc')||[];
+      const asg=await API._get('assets','assigned_to=eq.'+encodeURIComponent(sid))||[];
+      const ck=await API._get('staff_checklists','staff_id=eq.'+encodeURIComponent(sid))||[];
+      const days=this._mgrRepDays().filter(d=>!isHoliday(d));
+      let pres=0,onl=0;
+      days.forEach(d=>{const ds=fmtD(d.toISOString());
+        if(leaveOnDate(this.leave,sid,d.toISOString().slice(0,10)))onl++;
+        else if(this.records.some(r=>r.id===sid&&fmtD(r.date||r.in)===ds))pres++;});
+      const cf=this._contractFlag(st.contractEnd);
+      const row=(k,v)=>`<tr><td style="color:var(--text2)">${k}</td><td>${v||'—'}</td></tr>`;
+      const sec=t=>`<tr><td colspan="2" style="background:var(--surf2);font-weight:700;color:var(--teal);font-size:.76rem;letter-spacing:.4px">${t}</td></tr>`;
+      let h=sec('EMPLOYMENT')
+        +row('Employee ID',sid)+row('Name','<strong>'+st.name+'</strong>')
+        +row('Department / Unit',st.unit)+row('Position',st.position)
+        +row('Employment Type',st.employmentType||'Staff')
+        +row('Date Joined',st.dateJoined?fmtISO(st.dateJoined):'')
+        +row('Reporting Manager',this._sName(st.supervisor))
+        +row('Role',roleLabel(st.role));
+      h+=sec('CONTRACT &amp; PROBATION')
+        +row('Contract Start',st.contractStart?fmtISO(st.contractStart):'')
+        +row('Contract End',st.contractEnd?fmtISO(st.contractEnd):'')
+        +row('Contract Status','<span class="c-flag '+cf.cls+'">'+cf.label+'</span>')
+        +row('Probation Status',f.probation_status||'N/A')
+        +row('Probation Ends',f.probation_end?fmtISO(f.probation_end):'')
+        +row('Date Confirmed',f.confirmed_date?fmtISO(f.confirmed_date):'');
+      h+=sec('PERSONAL &amp; STATUTORY')
+        +row('Date of Birth',f.dob?fmtISO(f.dob):'')
+        +row('Phone',f.phone||st.phone)+row('Email',st.email)
+        +row('Residential Address',f.residential_address)
+        +row('Emergency Contact',f.emergency_contact)
+        +row('Next of Kin',(f.next_of_kin||'')+(f.next_of_kin_phone?' · '+f.next_of_kin_phone:''))
+        +row('SSNIT Number',f.ssnit_number)+row('Qualifications',f.qualifications);
+      h+=sec('ATTENDANCE (selected period)')
+        +row('Working Days',days.length)+row('Days Present','<strong>'+pres+'</strong>')
+        +row('Days On Leave',onl)+row('Days Absent',Math.max(0,days.length-pres-onl));
+      h+=sec('LEAVE HISTORY')
+        +(lv.length?lv.map(l=>row(l.type,fmtISO(l.startDate)+' → '+fmtISO(l.endDate)+' · '+l.days+'d · '+l.status)).join(''):row('','No leave recorded'));
+      h+=sec('APPRAISALS')
+        +(ap.length?ap.map(x=>row(x.period||'',(+x.final_score||0).toFixed(2)+'/5 · '+this._ratingWord(x.final_score)+' · '+(x.status||''))).join(''):row('','No appraisal on record'));
+      h+=sec('TRAINING')
+        +(tr.length?tr.map(t=>row(t.course,(t.provider||'')+(t.completed_date?' · completed '+String(t.completed_date).slice(0,10):'')+(t.expiry_date?' · expires '+String(t.expiry_date).slice(0,10):''))).join(''):row('','No training recorded'));
+      h+=sec('ASSETS HELD')
+        +(asg.length?asg.map(x=>row(x.id,(x.name||'')+' · '+(x.condition||''))).join(''):row('','No assets assigned'));
+      h+=sec('ON/OFFBOARDING');
+      if(ck.length){ck.forEach(c=>{let it=[];try{it=JSON.parse(c.items||'[]');}catch(e){}
+        h+=row(c.kind==='offboarding'?'Offboarding':'Onboarding',it.filter(x=>x.done).length+'/'+it.length+' complete · '+(c.status||''));});}
+      else h+=row('','No checklist started');
+      let dc=[];try{dc=JSON.parse(f.documents||'[]');}catch(e){}
+      h+=sec('DOCUMENTS ON FILE')
+        +(dc.length?dc.map(d=>row(d.name,d.at||'')).join(''):row('','No documents uploaded'));
+      body.innerHTML=h;
+      return;
+    }
     if(type==='demographics'){
       H(['Category','Item','Count','Share']);
       const tot=staffList.length;
@@ -2428,7 +2546,7 @@ class App{
       body.innerHTML=rows;
     } else {
       const EXCLUDED_UNITS=['National Service','Intern'];
-      let staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));
+      let staffList=Object.entries(this.staff).filter(([,s])=>s.active!==false&&!EXCLUDED_UNITS.includes((s.unit||'').trim()));
       const q=this._mgrRepStaffSearch();
       if(q)staffList=staffList.filter(([id,s])=>id.toLowerCase().includes(q)||s.name.toLowerCase().includes(q));
       const allDays=this._mgrRepDays();
@@ -2490,7 +2608,7 @@ class App{
       });
       this._dl(csv,'THP_HR_Report_'+Date.now()+'.csv','text/csv');
     }
-    else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());const hol=isHoliday(dt);if(hol){const holName=getHolidayName(dt)||'Public Holiday';csv+=`"—","${dateStr}","ALL STAFF","—","Holiday — ${holName}"\n`;}else{staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});}});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
+    else{const EXCLUDED_UNITS=['National Service','Intern'];const staffList=Object.entries(this.staff).filter(([,s])=>s.active!==false&&!EXCLUDED_UNITS.includes((s.unit||'').trim()));const allDays=this._mgrRepDays();let csv='Staff ID,Date,Name,Unit,Status\n';allDays.forEach(dt=>{const dateStr=fmtD(dt.toISOString());const hol=isHoliday(dt);if(hol){const holName=getHolidayName(dt)||'Public Holiday';csv+=`"—","${dateStr}","ALL STAFF","—","Holiday — ${holName}"\n`;}else{staffList.forEach(([id,s])=>{const present=this.records.some(r=>r.id===id&&fmtD(r.date||r.in)===dateStr);const onLeave=present?null:leaveOnDate(this.leave,id,dt.toISOString().slice(0,10));csv+=`"${id}","${dateStr}","${s.name}","${s.unit}","${present?'Present':onLeave?'On Leave':'Absent'}"\n`;});}});this._dl(csv,'THP_Report_'+Date.now()+'.csv','text/csv');}
   }
   printMgrReport(){
     const html=this._buildReportHTML(false);
@@ -2860,22 +2978,40 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     }).join('');
   }
   async openHRFileModal(id){
-    const s=this.staff[id];if(!s)return;
+    const st=this.staff[id];if(!st)return;
     $('hf-id').value=id;
-    $('hf-staff-name').textContent=s.name+' ('+id+') — '+(s.unit||'');
+    $('hf-staff-name').textContent=st.name+' ('+id+')';
     $('hf-msg').textContent='Loading…';
     $('hrfile-modal').classList.add('open');
+    $('hf-empid').value=id;
+    $('hf-dept').value=st.unit||'';
+    $('hf-position').value=st.position||'';
+    $('hf-emptype').value=st.employmentType||'Staff';
+    $('hf-joined').value=st.dateJoined?String(st.dateJoined).slice(0,10):'';
+    const mgrs=Object.entries(this.staff)
+      .filter(([i2,s2])=>(s2.role==='manager'||s2.role==='country_leader')&&i2!==id)
+      .sort((a,b)=>a[1].name.localeCompare(b[1].name));
+    $('hf-manager').innerHTML='<option value="">— Not set —</option>'
+      +mgrs.map(([i2,s2])=>`<option value="${i2}" ${st.supervisor===i2?'selected':''}>${s2.name}</option>`).join('');
     const f=await API.getHRFile(id)||{};
+    $('hf-probst').value=f.probation_status||'N/A';
+    $('hf-probend').value=f.probation_end?String(f.probation_end).slice(0,10):'';
+    $('hf-confirmed').value=f.confirmed_date?String(f.confirmed_date).slice(0,10):'';
     $('hf-dob').value=f.dob?String(f.dob).slice(0,10):'';
-    $('hf-phone').value=f.phone||s.phone||'';
-    $('hf-emergency').value=f.emergency_contact||s.emergencyContact||'';
+    $('hf-phone').value=f.phone||st.phone||'';
+    $('hf-address').value=f.residential_address||'';
+    $('hf-emergency').value=f.emergency_contact||st.emergencyContact||'';
     $('hf-nok').value=f.next_of_kin||'';
     $('hf-nok-phone').value=f.next_of_kin_phone||'';
     $('hf-ssnit').value=f.ssnit_number||'';
     $('hf-quals').value=f.qualifications||'';
-    $('hf-notes').value=f.notes||'';
     $('hf-photo-url').value=f.photo_url||'';
-    const _pv=$('hf-photo-prev');if(_pv){const _t=this._drivePhoto(f.photo_url);if(_t){_pv.src=_t;_pv.style.display='block';}else _pv.style.display='none';}
+    const _pv=$('hf-photo-prev'),_ph=$('hf-photo-ph');
+    const _t=this._drivePhoto(f.photo_url);
+    if(_pv){if(_t){_pv.src=_t;_pv.style.display='block';if(_ph)_ph.style.display='none';}
+            else{_pv.style.display='none';if(_ph)_ph.style.display='block';}}
+    const _sub=$('hf-staff-sub');
+    if(_sub)_sub.textContent=[st.position||'',st.unit||'',st.employmentType||''].filter(Boolean).join(' · ');
     let docs=[];try{docs=JSON.parse(f.documents||'[]');}catch(e){}
     $('hf-docs-json').value=JSON.stringify(docs);
     this._renderHRDocs(docs);
@@ -2888,6 +3024,12 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   removeHRDoc(i){
     let docs=[];try{docs=JSON.parse($('hf-docs-json').value||'[]');}catch(e){}
+    const d=docs[i];if(!d)return;
+    if(!confirm('Remove this document from the staff file?\n\n'+d.name))return;
+    const typed=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+d.name);
+    if(typed===null)return;
+    if(String(typed).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
+    this.audit('Staff document removed','Document',this.staff[$('hf-id').value]?.name||'',d.name);
     docs.splice(i,1);
     $('hf-docs-json').value=JSON.stringify(docs);
     this._renderHRDocs(docs);
@@ -2897,8 +3039,10 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const fileInput=$('hf-doc-file');const id=$('hf-id').value;
     if(!fileInput?.files?.length)return toast('Choose a file first','err');
     const file=fileInput.files[0];
-    if(file.size>5*1024*1024)return toast('File too large (max 5MB)','err');
-    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Uploading…</span>';
+    if(file.size>5*1024*1024)return toast('File too large — maximum 5 MB. Scan at lower resolution or split the document.','err');
+    if(this._hfBusy)return toast('An upload is already in progress — please wait','info');
+    this._hfBusy=true;
+    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Uploading '+(file.size/1048576).toFixed(1)+' MB — large scans take 30–60 seconds. Please do not close this window.</span>';
     try{
       const b64=await this._fileToBase64(file);
       const r=await API.gasPost({action:'uploadHRDoc',staffId:id,fileName:file.name,fileData:b64,mimeType:file.type});
@@ -2909,35 +3053,48 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
         this._renderHRDocs(docs);
         fileInput.value='';
         $('hf-msg').innerHTML='<span style="color:var(--green)">✓ Uploaded — click Save File to confirm.</span>';
-      }else $('hf-msg').innerHTML='<span style="color:var(--red)">Upload failed. Try again.</span>';
-    }catch(e){$('hf-msg').innerHTML='<span style="color:var(--red)">Upload error.</span>';}
+      }else $('hf-msg').innerHTML='<span style="color:var(--red)">Upload failed'+((r&&r.error)?': '+r.error:' — no response from Drive. Check your connection and try again.')+'</span>';
+    }catch(e){$('hf-msg').innerHTML='<span style="color:var(--red)">Upload error: '+(e.message||e)+'</span>';}
+    finally{this._hfBusy=false;}
   }
   async saveHRFile(){
     const id=$('hf-id').value;if(!id)return;
+    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const empUpd={unit:$('hf-dept').value.trim(),position:$('hf-position').value.trim(),
+      employment_type:$('hf-emptype').value,date_joined:$('hf-joined').value||null,
+      supervisor:$('hf-manager').value,phone:$('hf-phone').value.trim()};
+    const e1=await API._update('staff','id=eq.'+encodeURIComponent(id),empUpd);
     const data={
       dob:$('hf-dob').value||null,
       phone:$('hf-phone').value.trim(),
+      residential_address:$('hf-address').value.trim(),
       emergency_contact:$('hf-emergency').value.trim(),
       next_of_kin:$('hf-nok').value.trim(),
       next_of_kin_phone:$('hf-nok-phone').value.trim(),
       ssnit_number:$('hf-ssnit').value.trim(),
       qualifications:$('hf-quals').value.trim(),
-      notes:$('hf-notes').value.trim(),
+      probation_status:$('hf-probst').value,
+      probation_end:$('hf-probend').value||null,
+      confirmed_date:$('hf-confirmed').value||null,
       photo_url:$('hf-photo-url').value||'',
       documents:$('hf-docs-json').value||'[]'
     };
-    $('hf-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
     const r=await API.saveHRFile(id,data);
-    if(r&&r.success){
-      this.audit('Staff file updated','HR',this.staff[id]?.name||id,'');
+    if(r&&r.success&&e1!==null){
+      const st=this.staff[id];
+      if(st){st.unit=empUpd.unit;st.position=empUpd.position;st.employmentType=empUpd.employment_type;
+        st.dateJoined=empUpd.date_joined;st.supervisor=empUpd.supervisor;st.phone=empUpd.phone;}
+      this._cacheS();
+      this.audit('Staff file updated','HR',this.staff[id]?.name||id,
+        $('hf-position').value.trim()+' · '+$('hf-emptype').value+' · probation '+$('hf-probst').value);
       closeModal('hrfile-modal');
       this.renderHRFiles('a-');this.renderHRFiles('m-');
       toast('Staff file saved ✓');
-    }else $('hf-msg').innerHTML='<span style="color:var(--red)">Save failed. Try again.</span>';
+    } else $('hf-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'unknown')+'</span>';
   }
 
   /* ── Privileges (admin-assigned access) ── */
-  _privDefaults(){return{hr:[COUNTRY_LEADER_ID,HR_MANAGER_ID],cases:[HR_MANAGER_ID],payroll:['THPG/05/2025','THPG/01/2026-3']};}
+  _privDefaults(){return{hr:[COUNTRY_LEADER_ID,HR_MANAGER_ID],cases:[HR_MANAGER_ID,COUNTRY_LEADER_ID],payroll:['THPG/05/2025','THPG/01/2026-3',COUNTRY_LEADER_ID]};}
   async _fetchPriv(){
     let p={};
     try{const r=await API._get('settings','key=eq.privileges');if(r&&r.length&&r[0].value)p=JSON.parse(r[0].value);}catch(e){}
@@ -2946,18 +3103,54 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   async _applyPrivileges(id){
     const p=await this._fetchPriv();this._priv=p;
+    const scope=this.user?.role==='admin'?'#sb-admin'
+      :(this.user?.role==='manager'||this.user?.role==='country_leader')?'#sb-mgr':'#sb-staff';
+
+    // Re-assert the hidden state first. Anything not explicitly granted
+    // below stays hidden, whatever earlier code may have done.
+    const GATED={'hr-tab':'hr','contract-tab':'hr','cases-tab':'cases','payroll-tab':'payroll'};
+    const GATED_IDS={
+      'hr-tab':['nav-mgr-hrfiles'],'contract-tab':['nav-mgr-contract'],
+      'cases-tab':['nav-mgr-cases'],'payroll-tab':['nav-mgr-payroll','nav-st-payroll']
+    };
+    // Re-hide by walking every nav item / mobile tab whose panel is gated
+    const GATED_PANELS={
+      payroll:['m-payroll','m-grants','st-payroll'],
+      cases:['m-cases'],
+      hr:['m-hrfiles','m-birthdays','m-announce','m-filemgr','m-performance','m-recruit',
+          'm-training','m-orgchart','m-assistant','m-audit','m-onboard','m-assets'],
+      contract:['m-contracts']
+    };
+    const clsFor=k=>k==='payroll'?'payroll-tab':k==='cases'?'cases-tab':k==='contract'?'contract-tab':'hr-tab';
+    Object.entries(GATED_PANELS).forEach(([k,panels])=>{
+      const cls=clsFor(k);
+      panels.forEach(pid=>{
+        document.querySelectorAll("[onclick*=\"'"+pid+"'\"]").forEach(el=>{
+          if(el.classList.contains('nav-item')||el.classList.contains('mob-tab'))el.classList.add(cls);
+        });
+      });
+    });
+
+    const show=(cls)=>{
+      document.querySelectorAll(scope+' .'+cls).forEach(e=>e.classList.remove(cls));
+      document.querySelectorAll('.mob-tab.'+cls).forEach(e=>e.classList.remove(cls));
+    };
     if(p.hr.includes(id)){
-      document.querySelectorAll('.contract-tab').forEach(e=>e.classList.remove('contract-tab'));
-      document.querySelectorAll('.hr-tab').forEach(e=>e.classList.remove('hr-tab'));
+      show('contract-tab');show('hr-tab');
       document.body.classList.add('hr-mode');
       this.renderHRDash('m-');
+    } else {
+      document.body.classList.remove('hr-mode');
     }
-    if(p.cases.includes(id))document.querySelectorAll('.cases-tab').forEach(e=>e.classList.remove('cases-tab'));
-    if(p.payroll.includes(id))document.querySelectorAll('.payroll-tab').forEach(e=>e.classList.remove('payroll-tab'));
-    // Sync sidebar groups AFTER privileges resolve — never on a timer,
-    // otherwise a slow fetch leaves a granted section marked "empty".
+    if(p.cases.includes(id))show('cases-tab');
+    if(p.payroll.includes(id))show('payroll-tab');
+
     _restoreNavGroups();_hideEmptyNavGroups();
-    setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},150);
+    setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},200);
+    this.refreshActionBadges();
+    if(document.getElementById('m-slip-body'))this.renderMyPayslips('m-');
+    if(document.getElementById('m-torate-body')&&this.user?.role!=='staff')this.renderToRate();
+    setTimeout(()=>this.showFirstLoginHint(),900);
   }
   async renderPrivileges(){
     const body=$('a-priv-body');if(!body)return;
@@ -3127,7 +3320,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const r=await API.gasPost({action:'uploadHRDoc',staffId:id,fileName:'photo_'+file.name,fileData:b64,mimeType:file.type});
       if(r&&r.success&&r.fileUrl){
         $('hf-photo-url').value=r.fileUrl;
-        const pv=$('hf-photo-prev');pv.src=this._drivePhoto(r.fileUrl);pv.style.display='block';
+        const pv=$('hf-photo-prev'),ph=$('hf-photo-ph');
+        pv.src=this._drivePhoto(r.fileUrl);pv.style.display='block';if(ph)ph.style.display='none';
         inp.value='';
         $('hf-msg').innerHTML='<span style="color:var(--green)">✓ Photo uploaded — click Save File to confirm.</span>';
       }else $('hf-msg').innerHTML='<span style="color:var(--red)">Upload failed.</span>';
@@ -3161,6 +3355,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const list=$(p+'ann-list');if(!list)return;
     list.innerHTML='<div style="color:var(--text3);font-size:.8rem">Loading…</div>';
     const rows=await API._get('announcements','order=created_at.desc&limit=50')||[];
+    this._anns=rows;
     if(!rows.length){list.innerHTML='<div class="empty"><div class="empty-ico">📣</div>No announcements yet</div>';return;}
     list.innerHTML=rows.map(a=>`<div class="ann-card"><h5>${a.title}</h5><div style="font-size:.8rem;white-space:pre-wrap">${a.body||''}</div><div class="ann-meta">${a.author||''} · ${String(a.created_at).slice(0,10)} <a href="#" onclick="APP.delAnnouncement('${a.id}','${p}');return false" style="color:var(--red);margin-left:.5rem">✕ delete</a></div></div>`).join('');
   }
@@ -3181,7 +3376,15 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     else toast('Post failed: '+(API.lastError||'unknown error'),'err');
   }
   async delAnnouncement(id,p){
+    const a=(this._anns||[]).find(x=>x.id===id);
+    const t1=a?.title||'this announcement';
+    if(!confirm('Delete this announcement?\n\n'+t1))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+t1);
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
     await API._delete('announcements','id=eq.'+encodeURIComponent(id));
+    this.audit('Announcement deleted','HR',t1,'');
+    toast('Announcement deleted');
     this.renderAnnouncements(p);
   }
 
@@ -3236,6 +3439,24 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       if(!ins){msg.innerHTML='<span style="color:var(--red)">File reached Drive but the library record failed: '+(API.lastError||'unknown')+'</span>';return;}
       inp.value='';
       this.audit('Document uploaded','Document',file.name,$('m-od-vis').value+' / '+$('m-od-acc').value);
+      // Optionally tell the people who can now see it
+      if($('m-od-notify')?.checked){
+        const vis=$('m-od-vis').value;
+        const recips=Object.entries(this.staff).filter(([i,st])=>{
+          if((st.role||'')==='admin'||!st.email)return false;
+          if(vis==='staff')return true;
+          if(vis==='managers')return st.role==='manager'||st.role==='country_leader';
+          if(vis==='cl')return i===COUNTRY_LEADER_ID;
+          if(vis==='hr')return i===HR_MANAGER_ID||i===COUNTRY_LEADER_ID;
+          return false;
+        }).map(([i,st])=>({name:st.name,email:st.email,phone:st.phone||''}));
+        if(recips.length){
+          API.gasPost({action:'docNotify',docName:file.name,category:$('m-od-cat').value,
+            access:$('m-od-acc').value,by:this.user.name,recipients:recips})
+            .then(r=>{if(r&&r.success)toast('Notified '+r.sent+' staff ✓');}).catch(()=>{});
+        }
+        $('m-od-notify').checked=false;
+      }
       msg.innerHTML='<span style="color:var(--green)">✓ Uploaded and listed in the library.</span>';
       await this.renderFileMgr('m-');
     }catch(e){msg.innerHTML='<span style="color:var(--red)">Upload error: '+(e.message||e)+'</span>';}
@@ -3246,8 +3467,13 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     toast(vis==='staff'?'Now visible to all staff':'Now HR only');
   }
   async delOrgDoc(id){
-    if(!confirm('Delete this document from the library?'))return;
+    const doc=(this._orgDocs||[]).find(d=>d.id===id);
+    if(!confirm('Delete this document from the library?\n\n'+(doc?.name||'')))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+(doc?.name||''));
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
     await API._delete('org_documents','id=eq.'+encodeURIComponent(id));
+    this.audit('Library document deleted','Document',doc?.name||id,doc?.category||'');
     this.renderFileMgr('m-');
   }
   _visibleDocFilter(){
@@ -3284,6 +3510,77 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const el=$(kind==='ann'?'badge-ann':'badge-docs');
     if(el){el.textContent=n>0?(n>9?'9+':n):'';el.classList.toggle('on',n>0);}
     if(kind==='doc'){const m=$('mob-badge-docs');if(m)m.style.display=n>0?'block':'none';}
+    if(kind==='slip'){const m2=$('badge-slip-m');if(m2){m2.textContent=n>0?n:'';m2.classList.toggle('on',n>0);}}
+  }
+  /* ── Group + item notification counts ── */
+  _setGrpBadge(id,n){
+    const el=$(id);if(!el)return;
+    el.textContent=n>0?(n>9?'9+':n):'';
+    el.classList.toggle('on',n>0);
+  }
+  /* ── First-login guidance: point new users at the Dashboard ── */
+  showFirstLoginHint(){
+    try{
+      const k='thp_hint_'+(this.user?.id||'');
+      if(localStorage.getItem(k))return;
+      const nav=document.querySelector('#sb-mgr .nav-item, #sb-staff .nav-item');
+      if(!nav)return;
+      const r=nav.getBoundingClientRect();
+      const d=document.createElement('div');
+      d.className='nav-hint';
+      d.style.left=(r.right+12)+'px';
+      d.style.top=(r.top-4)+'px';
+      d.innerHTML='<strong>Start here.</strong><br>Your Dashboard shows today at a glance. '
+        +'A red dot means something needs your attention.<br>'
+        +'<button onclick="this.closest(\'.nav-hint\').remove()">Got it</button>';
+      document.body.appendChild(d);
+      localStorage.setItem(k,'1');
+      setTimeout(()=>{if(d.parentNode)d.remove();},15000);
+    }catch(e){}
+  }
+  async refreshActionBadges(){
+    try{
+      const uid=this.user?.id;if(!uid)return;
+      // Team: leave requests waiting on me
+      const isFinal=uid===COUNTRY_LEADER_ID||this._isActiveDelegate(uid);
+      const pending=this.leave.filter(l=>l.status==='Pending'&&(
+        (l.supervisorId===uid&&l.supervisorStatus==='Pending')||
+        (isFinal&&(l.supervisorStatus==='Approved'||l.supervisorStatus==='N/A')&&l.finalApproverStatus==='Pending')
+      )).length;
+      this._setGrpBadge('badge-team',pending);
+      // HR: contracts needing attention + incomplete staff files
+
+      // Finance — each item carries its own count, and the group shows the total
+      let payN=0,grantN=0;
+      if(this.PAY_APPROVERS.includes(uid)||this.PAY_PREPARERS.includes(uid)){
+        const [runs,gr]=await Promise.all([
+          API.secureGet('payroll_runs','select=status&status=eq.Submitted'),
+          API._get('grants','select=end_date,status')
+        ]);
+        payN=(runs||[]).length;
+        (gr||[]).forEach(g=>{if(String(g.status)!=='Closed'&&this._grantFlag(g.end_date).cls==='red')grantN++;});
+      }
+      this._setGrpBadge('badge-payroll',payN);
+      this._setGrpBadge('badge-grants',grantN);
+      this._setGrpBadge('badge-fin',payN+grantN);
+
+      // HR — per-item counts
+      let conN=0,fileN=0;
+      const files=await API.getAllHRFiles();
+      const fm={};(files||[]).forEach(f=>fm[f.staff_id]=f);
+      Object.entries(this.staff).forEach(([i,st])=>{
+        if((st.role||'')==='admin')return;
+        if(this._contractFlag(st.contractEnd).cls==='red')conN++;
+        const f=fm[i];
+        const done=f?[f.dob,f.phone,f.next_of_kin,f.ssnit_number].filter(v=>v&&String(v).trim()).length:0;
+        if(done<4)fileN++;
+      });
+      this._setGrpBadge('badge-contracts',conN);
+      this._setGrpBadge('badge-files',fileN);
+      const ck=await API._get('staff_checklists','select=status&status=neq.Completed')||[];
+      this._setGrpBadge('badge-onboard',ck.length);
+      this._setGrpBadge('badge-hr',conN+fileN+ck.length);
+    }catch(e){}
   }
   async refreshNewBadges(){
     try{
@@ -3322,7 +3619,11 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const f=await API.getHRFile(uid);
       if(!f?.dob)return;
       const d=new Date(String(f.dob).slice(0,10)),now=new Date();
-      if(d.getMonth()!==now.getMonth()||d.getDate()!==now.getDate())return;
+      // Show the greeting on the day, or on the next working day if the
+      // birthday fell on a weekend or public holiday and they were not in.
+      const thisYear=new Date(now.getFullYear(),d.getMonth(),d.getDate());
+      const daysSince=Math.floor((now-thisYear)/86400000);
+      if(daysSince<0||daysSince>3)return;
       localStorage.setItem('thp_bday_'+uid+'_'+yr,'1');
       this._showBirthdayPopup(this.user.name.split(' ')[0]);
     }catch(e){}
@@ -3560,7 +3861,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('vc-status').value=v?.status||'Open';
     $('vc-posted').value=v?.posted_date?String(v.posted_date).slice(0,10):new Date().toISOString().slice(0,10);
     $('vc-closing').value=v?.closing_date?String(v.closing_date).slice(0,10):'';
-    $('vc-desc').value=v?.description||'';
+    $('vc-desc').value=v?.requirements||'';
+    if($('vc-jd'))$('vc-jd').value=v?.description||'';
     const mgrs=Object.entries(this.staff).filter(([i,s])=>s.role==='manager'||s.role==='country_leader')
       .sort((a,b)=>a[1].name.localeCompare(b[1].name));
     $('vc-manager').innerHTML='<option value="">— Not set —</option>'+mgrs.map(([i,s])=>`<option value="${i}" ${v?.hiring_manager===i?'selected':''}>${s.name}</option>`).join('');
@@ -3575,8 +3877,9 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const r=await API._upsert('recruitment_vacancies',[{id,position:pos,unit:$('vc-unit').value.trim(),
       employ_type:$('vc-type').value,openings:+$('vc-openings').value||1,status:$('vc-status').value,
       hiring_manager:$('vc-manager').value,posted_date:$('vc-posted').value||null,
-      closing_date:$('vc-closing').value||null,description:$('vc-desc').value.trim(),created_by:this.user.name}]);
-    if(r){closeModal('vacancy-modal');toast('Vacancy saved ✓');this.renderRecruit('m-');}
+      closing_date:$('vc-closing').value||null,description:$('vc-jd')?.value.trim()||'',requirements:$('vc-desc').value.trim(),
+      created_by:this.user.name}]);
+    if(r){this.audit('Vacancy saved','HR',pos,$('vc-status').value);closeModal('vacancy-modal');toast('Vacancy saved ✓');this.renderRecruit('m-');}
     else $('vc-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
   }
   openApplicantModal(id){
@@ -3624,13 +3927,14 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       email:$('ap-email').value.trim(),phone:$('ap-phone').value.trim(),stage:$('ap-stage').value,
       rating:+$('ap-rating').value||0,cv_url:$('ap-cv-url').value,notes:$('ap-notes').value.trim(),
       applied_date:$('ap-date').value||null,updated_at:new Date().toISOString()}]);
-    if(r){closeModal('applicant-modal');toast('Candidate saved ✓');this.renderRecruit('m-');}
+    if(r){this.audit('Candidate saved','HR',nm,$('ap-stage').value);closeModal('applicant-modal');toast('Candidate saved ✓');this.renderRecruit('m-');}
     else $('ap-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
   }
 
   /* ── Staff self-assessment ── */
-  async renderMyAppraisals(){
-    const body=$('st-apr-body');if(!body)return;
+  async renderMyAppraisals(prefix){
+    const body=$((prefix||'st-')==='m-'?'m-apr-body':'st-apr-body');if(!body)return;
+
     body.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Loading…</td></tr>';
     const rows=await API._get('performance_appraisals','staff_id=eq.'+encodeURIComponent(this.user.id)+'&order=review_date.desc.nullslast')||[];
     this._myApr=rows;
@@ -3663,6 +3967,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('ma-mgr').innerHTML='<option value="">— Select your supervisor —</option>'+
       mgrs.map(([i,s])=>`<option value="${i}" ${pick===i?'selected':''}>${s.name} — ${s.unit||''}</option>`).join('');
     $('ma-comment').value=r?.emp_comment||'';
+    if($('ma-overall'))$('ma-overall').value=r?.self_overall||0;
+    if($('ma-career'))$('ma-career').value=r?.career_goals||'';
     $('ma-dev').value=r?.dev_plan||'';
     let k=[];try{k=JSON.parse(r?.kpas||'[]');}catch(e){}
     this._myKpas=(k&&k.length)?k:this._defaultKPAs();
@@ -3701,6 +4007,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!mgr)return $('ma-msg').innerHTML='<span style="color:var(--red)">Please select your supervisor.</span>';
     const filled=this._myKpas.some(k=>(k.kpis||[]).some(x=>(+x.self||0)>0));
     if(!filled)return $('ma-msg').innerHTML='<span style="color:var(--red)">Please rate yourself on at least one item.</span>';
+    if(!+($('ma-overall')?.value||0))return $('ma-msg').innerHTML='<span style="color:var(--red)">Select your overall self-assessment under Final Assessment.</span>';
     if(!confirm('Submit your self-assessment to '+this._sName(mgr)+'?\n\nYou will not be able to edit it afterwards.'))return;
     const score=this._renderMyKPAs();
     const id=$('ma-id').value||this._uid('APR');
@@ -3711,6 +4018,9 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       job_title:'',department:me.unit||'',location:'',line_manager:mgr,
       kpas:JSON.stringify(this._myKpas),final_score:+score.toFixed(2),
       dev_plan:$('ma-dev').value.trim(),emp_comment:$('ma-comment').value.trim(),
+      self_overall:+($('ma-overall')?.value||0),self_score:+score.toFixed(2),
+      self_submitted:new Date().toISOString(),career_goals:$('ma-career')?.value.trim()||'',
+      training_needs:$('ma-dev')?.value.trim()||'',
       status:'Self-Assessed',updated_at:new Date().toISOString()}]);
     if(!r)return $('ma-msg').innerHTML='<span style="color:var(--red)">Submit failed: '+(API.lastError||'')+'</span>';
     const recips=[];
@@ -3725,17 +4035,20 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ── Performance Appraisal (THP Annual Review Form) ── */
-  _ratingWord(v){return['—','Unsatisfactory','Below Criteria','Achieved Criteria','Above Criteria','Exceeded All'][Math.round(+v||0)]||'—';}
+  _ratingWord(v){return['—','Unsatisfactory performance','Performed Below Performance Criteria','Achieved Performance Criteria','Achieved Above Performance Criteria','Exceeded on all Performance Criteria'][Math.round(+v||0)]||'—';}
+  /* KPAs exactly as in the THP Annual Performance Review Form */
   _defaultKPAs(){return[
     {name:'Financial',weight:30,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
     {name:'Customer',weight:30,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
     {name:'Internal Business Process',weight:20,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
-    {name:'Learning & Growth',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
-    {name:'Values & Behaviours',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''}];}
+    {name:'Learning and Growth',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''},
+    {name:'Ethics and Compliance',weight:10,kpis:[{kpi:'',standard:'',self:0,mgr:0}],commentary:''}];}
   async renderPerf(p){
     const body=$('m-perf-body');if(!body)return;
     body.innerHTML='<tr><td colspan="8" style="color:var(--text3)">Loading…</td></tr>';
     let rows=await API._get('performance_appraisals','order=review_date.desc.nullslast&limit=300')||[];
+    // HR sees only reviews the line manager has completed
+    rows=rows.filter(r=>['Manager Reviewed','Acknowledged','Closed'].includes(r.status));
     const st=$('m-ap-status')?.value||'';
     if(st)rows=rows.filter(r=>r.status===st);
     this._perfRows=rows;
@@ -3750,7 +4063,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
         <td><span class="c-flag ${band}">${this._ratingWord(score)}</span></td>
         <td><span class="c-flag ${sc[r.status]||'none'}">${r.status||'Draft'}</span>${r.ack_by_staff?' ✔':''}</td>
         <td style="font-size:.76rem">${r.review_date?String(r.review_date).slice(0,10):'—'}</td>
-        <td><button class="bsm bsm-navy" onclick="APP.openPerfModal('${r.id}')">✏</button></td></tr>`;
+        <td><button class="bsm bsm-navy" onclick="APP.openPerfModal('${r.id}')">✏</button>
+          <button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.deleteAppraisal('${r.id}')">🗑</button></td></tr>`;
     }).join('');
   }
   openPerfModal(id){
@@ -3914,7 +4228,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const id=$('tr-id').value||this._uid('TR');
     if(!$('tr-course').value.trim())return $('tr-msg').innerHTML='<span style="color:var(--red)">Course is required.</span>';
     const r=await API._upsert('training_records',[{id,staff_id:$('tr-staff').value,course:$('tr-course').value.trim(),provider:$('tr-provider').value.trim(),completed_date:$('tr-completed').value||null,expiry_date:$('tr-expiry').value||null,certificate_url:$('tr-cert').value.trim(),notes:$('tr-notes').value.trim()}]);
-    if(r){closeModal('train-modal');toast('Training saved ✓');this.renderTraining('m-');}
+    if(r){this.audit('Training record saved','HR',this._sName($('tr-staff').value),$('tr-course').value.trim());closeModal('train-modal');toast('Training saved ✓');this.renderTraining('m-');}
     else $('tr-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
   }
 
@@ -3922,7 +4236,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   async renderCases(p){
     const body=$(p+'case-body');if(!body)return;
     body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
-    const rows=await API._get('hr_cases','order=opened_date.desc.nullslast&limit=300')||[];
+    const rows=await API.secureGet('hr_cases','order=opened_date.desc.nullslast&limit=300')||[];
     this._caseRows=rows;
     if(!rows.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">⚖</div>No cases recorded</div></td></tr>';return;}
     body.innerHTML=rows.map(r=>{
@@ -3934,23 +4248,44 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const r=id?(this._caseRows||[]).find(x=>x.id===id):null;
     this._popStaffSel('cs-staff',r?.staff_id);
     $('cs-id').value=r?.id||'';
-    $('cs-type').value=r?.case_type||'Disciplinary';
+    $('cs-ref').value=r?.case_ref||('CASE-'+new Date().getFullYear()+'-'+String(Math.floor(Math.random()*900)+100));
+    $('cs-type').value=r?.case_type||'Complaint / Grievance';
+    $('cs-sev').value=r?.severity||'Minor';
     $('cs-status').value=r?.status||'Open';
+    $('cs-raised').value=r?.raised_by||'';
     $('cs-opened').value=r?.opened_date?String(r.opened_date).slice(0,10):new Date().toISOString().slice(0,10);
     $('cs-closed').value=r?.closed_date?String(r.closed_date).slice(0,10):'';
     $('cs-summary').value=r?.summary||'';
     $('cs-outcome').value=r?.outcome||'';
+    $('cs-appeal').value=String(r?.appeal_lodged||false);
+    $('cs-appealout').value=r?.appeal_outcome||'';
+    let stg=[];try{stg=JSON.parse(r?.stages||'[]');}catch(e){}
+    this._csStages=stg.length?stg:this._caseStages().map(n=>({name:n,done:false,date:''}));
+    this._renderCaseStages();
+    let docs=[];try{docs=JSON.parse(r?.documents||'[]');}catch(e){}
+    $('cs-docs-json').value=JSON.stringify(docs);
+    this._renderCaseDocs(docs);
     $('cs-msg').textContent='';
     $('case-modal').classList.add('open');
   }
   async saveCase(){
+    const staff=$('cs-staff').value;
+    if(!staff)return $('cs-msg').innerHTML='<span style="color:var(--red)">Select the staff member.</span>';
     const id=$('cs-id').value||this._uid('CS');
-    const r=await API._upsert('hr_cases',[{id,staff_id:$('cs-staff').value,case_type:$('cs-type').value,status:$('cs-status').value,opened_date:$('cs-opened').value||null,closed_date:$('cs-closed').value||null,summary:$('cs-summary').value.trim(),outcome:$('cs-outcome').value.trim()}]);
-    if(r){this.audit('HR case saved','HR',this._sName($('cs-staff').value),$('cs-type').value+' · '+$('cs-status').value);closeModal('case-modal');toast('Case saved ✓');this.renderCases('m-');}
-    else $('cs-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
+    $('cs-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API.secureSave('hr_cases',[{id,staff_id:staff,case_ref:$('cs-ref').value,
+      case_type:$('cs-type').value,severity:$('cs-sev').value,status:$('cs-status').value,
+      raised_by:$('cs-raised').value.trim(),
+      opened_date:$('cs-opened').value||null,closed_date:$('cs-closed').value||null,
+      summary:$('cs-summary').value.trim(),outcome:$('cs-outcome').value.trim(),
+      stages:JSON.stringify(this._csStages),documents:$('cs-docs-json').value||'[]',
+      appeal_lodged:$('cs-appeal').value==='true',appeal_outcome:$('cs-appealout').value.trim(),
+      updated_at:new Date().toISOString()}]);
+    if(r){this.audit('Case file saved','Security',this._sName(staff),
+      $('cs-ref').value+' · '+$('cs-type').value+' · '+$('cs-status').value);
+      closeModal('case-modal');toast('Case saved ✓');this.renderCases('m-');}
+    else $('cs-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
   }
-
-  /* ── Org Chart (editable organogram) ── */
   async renderOrgChart(p){
     const el=$((p||'m-')+'org-tree');if(!el)return;
     el.innerHTML='<div style="color:var(--text3);font-size:.8rem">Loading…</div>';
@@ -4059,7 +4394,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ── Payroll (Finance: Ernest + Emmanuel; settings-driven) ── */
-  _payDefaults(){return{ssnitEmployeePct:5.5,ssnitEmployerPct:13,ssnitCeilingMonthly:69000,tier3MaxPct:16.5,extraReliefPct:5,
+  _payDefaults(){return{ssnitTotalPct:18.5,ssnitEmployeePct:5.5,ssnitCeilingMonthly:69000,pfTotalPct:10,pfEmployeePct:5,
     bands:[{w:490,r:0},{w:110,r:.05},{w:130,r:.1},{w:3166.67,r:.175},{w:16000,r:.25},{w:30520,r:.3},{w:null,r:.35}]};}
   _maskAcct(v){
     const t=String(v||'').replace(/\s+/g,'');
@@ -4077,21 +4412,24 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   _ghs(n){return 'GH₵ '+(Number(n)||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});}
   async _loadPaySettings(){
     if(this._payS)return this._payS;
-    const r=await API._get('payroll_settings','key=eq.main');
+    if(this._paySPromise)return this._paySPromise;   // avoid duplicate in-flight calls
+    const r=await API.secureGet('payroll_settings','key=eq.main');
     let s=this._payDefaults();
-    if(r&&r.length){try{s={...s,...JSON.parse(r[0].value)};}catch(e){}}
+    if(r&&r.length){try{const j=JSON.parse(r[0].value);
+      if(j.extraReliefPct!==undefined&&j.pfMatchPct===undefined)j.pfMatchPct=j.extraReliefPct; // legacy key
+      s={...s,...j};}catch(e){}}
     this._payS=s;return s;
   }
   async savePaySettings(p){
     const s=await this._loadPaySettings();
-    s.ssnitEmployeePct=+($(p+'ps-emp').value)||s.ssnitEmployeePct;
-    s.ssnitEmployerPct=+($(p+'ps-empr').value)||s.ssnitEmployerPct;
+    s.ssnitTotalPct=+($(p+'ps-emp').value)||s.ssnitTotalPct;
+    s.ssnitEmployeePct=+($(p+'ps-empr').value)||s.ssnitEmployeePct;
     s.ssnitCeilingMonthly=+($(p+'ps-ceil').value)||s.ssnitCeilingMonthly;
-    s.tier3MaxPct=+($(p+'ps-t3').value)||s.tier3MaxPct;
-    s.extraReliefPct=+($(p+'ps-relief').value)||0;
+    s.pfTotalPct=+($(p+'ps-t3').value)||s.pfTotalPct;
+    s.pfEmployeePct=+($(p+'ps-relief').value)||0;
     this._payS=s;
-    const r=await API._upsert('payroll_settings',[{key:'main',value:JSON.stringify(s)}]);
-    if(r){toast('Settings saved ✓');this.renderPayroll(p);}else toast('Save failed','err');
+    const r=await API.secureSave('payroll_settings',[{key:'main',value:JSON.stringify(s)}]);
+    if(r){toast('Settings saved ✓');this.renderPayroll(p);}else toast('Save failed: '+(API.lastError||'unknown'),'err');
   }
   _calcPay(ps,S){
     const n=v=>+v||0;
@@ -4104,30 +4442,49 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const taxableExtras=arrears+incent+bonus+ot+taxA;
     const gross=basic+arrears+incent+bonus+ot+fuel+taxA+nonTax;
     const capped=Math.min(basic,S.ssnitCeilingMonthly);
-    const ssnitEmp=S.ssnitEmployeePct/100*capped;
-    const tier3=Math.min(n(ps.tier3_pct),S.tier3MaxPct)/100*basic;   // Provident Fund
-    const extraRelief=(+S.extraReliefPct||0)/100*basic;   // Tier 2 relief (matches THP payslips)
-    let taxable=Math.max(0,basic-ssnitEmp-tier3-extraRelief+taxableExtras);
+    // SSNIT: 18.5% total — 5.5% deducted from the employee, the rest paid by THP.
+    const ssnitTotal=(+S.ssnitTotalPct||18.5)/100*capped;
+    const ssnitEmp=(+S.ssnitEmployeePct||5.5)/100*capped;
+    // Provident Fund: 10% total — 5% deducted from the employee, the rest paid by THP.
+    const pfTotal=(+S.pfTotalPct||10)/100*basic;
+    const tier3=(+S.pfEmployeePct||5)/100*basic;
+    // Total tax relief allowed on basic, as a single percentage.
+    // Set it so PAYE matches the payslip: 10% of basic for THP
+    // (5% SSNIT-side + 5% provident fund) is already covered by
+    // ssnitEmp + tier3; reliefPct adds any further relief on basic.
+    // Tax relief: the full SSNIT employee share plus the FULL provident fund
+    // (both portions), which is what reconciles to the THP payslip.
+    let taxable=Math.max(0,basic-ssnitEmp-pfTotal+taxableExtras);
     let paye=0,rem=taxable;
     for(const b of S.bands){const chunk=b.w===null?rem:Math.min(rem,b.w);paye+=chunk*b.r;rem-=chunk;if(rem<=0)break;}
     if(ps.paye_override!==null&&ps.paye_override!==undefined&&ps.paye_override!=='')paye=n(ps.paye_override);
     const advance=n(ps.salary_advance),ug=n(ps.ug_credit),other=n(ps.other_deductions);
     const totalDed=ssnitEmp+tier3+paye+advance+ug+other;
     const net=gross-totalDed;
-    const emprSSNIT=S.ssnitEmployerPct/100*capped;
-    return{gross,taxA,nonTax,arrears,incent,bonus,ot,fuel,ssnitEmp,tier3,paye,advance,ug,other,totalDed,net,
-      cost:gross+emprSSNIT,
+    const emprSSNIT=ssnitTotal-ssnitEmp;
+    return{gross,taxA,nonTax,arrears,incent,bonus,ot,fuel,ssnitEmp,ssnitTotal,tier3,pfTotal,paye,advance,ug,other,totalDed,net,
+      cost:gross+emprSSNIT+(pfTotal-tier3),
       allowStr:allow.map(a=>`${a.n} ${this._ghs(a.a)}${a.tax?'':' (nt)'}`).join(', ')||'—'};
   }
   async renderPayroll(p){
     const body=$(p+'pay-body');if(!body)return;
     body.innerHTML='<tr><td colspan="10" style="color:var(--text3)">Loading…</td></tr>';
-    const S=await this._loadPaySettings();
-    $(p+'ps-emp').value=S.ssnitEmployeePct;$(p+'ps-empr').value=S.ssnitEmployerPct;
-    $(p+'ps-ceil').value=S.ssnitCeilingMonthly;$(p+'ps-t3').value=S.tier3MaxPct;
-    if($(p+'ps-relief'))$(p+'ps-relief').value=S.extraReliefPct??0;
+    // One round trip each to Apps Script is slow; run them together.
+    const [S,rowsRaw]=await Promise.all([
+      this._loadPaySettings(),
+      API.secureGet('payroll_staff','select=*')
+    ]);
+    $(p+'ps-emp').value=S.ssnitTotalPct;$(p+'ps-empr').value=S.ssnitEmployeePct;
+    $(p+'ps-ceil').value=S.ssnitCeilingMonthly;$(p+'ps-t3').value=S.pfTotalPct;
+    if($(p+'ps-relief'))$(p+'ps-relief').value=S.pfEmployeePct??5;
     if(!$(p+'pay-month').value)$(p+'pay-month').value=new Date().toISOString().slice(0,7);
-    const rows=await API._get('payroll_staff','select=*')||[];
+    const ap=$(p+'ps-applied');
+    if(ap)ap.innerHTML='<strong>Rates currently applied:</strong> '
+      +'SSNIT <strong>'+S.ssnitTotalPct+'%</strong> total, of which <strong>'+S.ssnitEmployeePct+'%</strong> is deducted from the employee · '
+      +'Provident Fund <strong>'+S.pfTotalPct+'%</strong> total, of which <strong>'+S.pfEmployeePct+'%</strong> is deducted · '
+      +'SSNIT ceiling <strong>'+this._ghs(S.ssnitCeilingMonthly)+'</strong>/month.';
+    this.renderPayStatus(p);
+    const rows=rowsRaw||[];
     this._payRows=rows;const payMap={};rows.forEach(r=>payMap[r.staff_id]=r);
     const list=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin').sort((a,b)=>a[1].name.localeCompare(b[1].name));
     let tot={gross:0,ssnitEmp:0,tier3:0,paye:0,net:0,cost:0};
@@ -4138,7 +4495,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       const c=this._calcPay(ps,S);
       Object.keys(tot).forEach(k=>tot[k]+=c[k]);
       let alloc=[];try{alloc=JSON.parse(ps.cost_allocation||'[]');}catch(e){}
-      this._payCalc.push({id,name:s.name,unit:s.unit,email:s.email||'',designation:ps.designation||'',...c,basic:+ps.basic,alloc});
+      let allowList=[];try{allowList=JSON.parse(ps.allowances||'[]');}catch(e){}
+      this._payCalc.push({id,name:s.name,unit:s.unit,email:s.email||'',designation:ps.designation||'',...c,basic:+ps.basic,alloc,allowances:allowList});
       return`<tr><td><strong>${s.name}</strong><br><span style="font-size:.72rem;color:var(--text3)">${id}</span></td><td>${this._ghs(ps.basic)}</td><td style="font-size:.72rem">${c.allowStr}</td><td>${this._ghs(c.gross)}</td><td>${this._ghs(c.ssnitEmp)}</td><td>${this._ghs(c.tier3)}</td><td>${this._ghs(c.paye)}</td><td><strong>${this._ghs(c.net)}</strong></td><td>${this._ghs(c.cost)}</td><td><button class="bsm bsm-navy" onclick="APP.openPayModal('${id}')">✏</button></td></tr>`;
     }).join('');
     const sm=$(p+'pay-summary');
@@ -4148,6 +4506,26 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       <div class="cs-box"><div class="cs-num" style="font-size:1rem;color:var(--green)">${this._ghs(tot.net)}</div><div class="cs-lbl">Net Payout</div></div>
       <div class="cs-box"><div class="cs-num" style="font-size:1rem">${this._ghs(tot.cost)}</div><div class="cs-lbl">Employer Cost</div></div>`;
   }
+  /* ── Allowance builder: name · amount · taxable ── */
+  _renderAllowRows(){
+    const el=$('pm-allow-rows');if(!el)return;
+    el.innerHTML=(this._allowList||[]).map((x,i)=>`
+      <div class="allow-row">
+        <input class="fi an" value="${(x.n||'').replace(/"/g,'&quot;')}" placeholder="Allowance name" oninput="APP._allowSet(${i},'n',this.value)">
+        <input class="fi aa" type="number" step="0.01" value="${+x.a||0}" oninput="APP._allowSet(${i},'a',this.value)">
+        <select class="fi at" onchange="APP._allowSet(${i},'tax',this.value==='t')">
+          <option value="t" ${x.tax?'selected':''}>Taxable</option>
+          <option value="n" ${x.tax?'':'selected'}>Non-taxable</option>
+        </select>
+        <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2)" onclick="APP._allowDel(${i})">✕</button>
+      </div>`).join('')
+      ||'<div style="font-size:.76rem;color:var(--text3);margin-bottom:.4rem">No allowances added.</div>';
+    $('pm-allow').value=JSON.stringify(this._allowList||[]);
+  }
+  _allowSet(i,f,v){this._allowList[i][f]=(f==='a')?(+v||0):v;$('pm-allow').value=JSON.stringify(this._allowList);}
+  _allowDel(i){this._allowList.splice(i,1);this._renderAllowRows();}
+  addAllowRow(){(this._allowList=this._allowList||[]).push({n:'',a:0,tax:false});this._renderAllowRows();}
+
   async openPayModal(id){
     const s=this.staff[id];if(!s)return;
     const ps=(this._payRows||[]).find(r=>r.staff_id===id);
@@ -4159,7 +4537,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     $('pm-grade').value=ps?.grade||'junior';
     $('pm-bank').value='';$('pm-account').value='';
     this._acctMasked=false;this._acctReal='';
-    API.getHRFile(id).then(hf=>{
+    Promise.resolve(ps||{}).then(hf=>{
       if($('pm-id').value!==id)return;
       $('pm-bank').value=hf?.bank_name||'';
       const acct=hf?.bank_account||'';
@@ -4168,7 +4546,11 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       if(acct){el.value=this._maskAcct(acct);el.readOnly=true;this._acctMasked=true;if(btn)btn.style.display='inline-block';}
       else{el.value='';el.readOnly=false;this._acctMasked=false;if(btn)btn.style.display='none';}
     });
-    $('pm-allow').value=allow.map(a=>`${a.n} : ${a.a} : ${a.tax?'t':'n'}`).join('\n');
+    this._allowList=allow.slice();
+    const legacyFuel=+(ps?.fuel_allowance)||0;
+    if(legacyFuel>0&&!this._allowList.some(x=>/fuel/i.test(x.n||'')))
+      this._allowList.push({n:'Fuel Allowance',a:legacyFuel,tax:false});
+    this._renderAllowRows();
     $('pm-designation').value=ps?.designation||'';
     ['arrears','incentives','bonus','overtime','fuel','advance','ug','other'].forEach(k=>{
       const map={arrears:'arrears',incentives:'incentives',bonus:'bonus',overtime:'overtime',
@@ -4182,26 +4564,25 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   async savePayStaff(){
     const id=$('pm-id').value;
-    const allow=$('pm-allow').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
-      const parts=l.split(':').map(x=>x.trim());
-      return{n:parts[0]||'Allowance',a:+parts[1]||0,tax:(parts[2]||'t').toLowerCase()!=='n'};
-    });
+    const allow=(this._allowList||[]).filter(x=>(x.n||'').trim()&&(+x.a||0)!==0)
+      .map(x=>({n:x.n.trim(),a:+x.a||0,tax:!!x.tax}));
     const alloc=$('pm-alloc').value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
       const q=l.split(':').map(x=>x.trim());return{project:q[0]||'Unallocated',pct:+q[1]||0};});
     const totPct=alloc.reduce((t,x)=>t+x.pct,0);
     if(alloc.length&&Math.abs(totPct-100)>0.01)return $('pm-msg').innerHTML='<span style="color:var(--red)">Allocation must total 100% (currently '+totPct+'%).</span>';
     const ov=$('pm-paye-ov').value.trim();
-    const r=await API._upsert('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),
+    const r=await API.secureSave('payroll_staff',[{staff_id:id,basic:+$('pm-basic').value||0,allowances:JSON.stringify(allow),
       tier3_pct:+$('pm-tier3').value||0,grade:$('pm-grade').value,cost_allocation:JSON.stringify(alloc),
       designation:$('pm-designation').value.trim(),
       arrears:+$('pm-arrears').value||0,incentives:+$('pm-incentives').value||0,bonus:+$('pm-bonus').value||0,
-      overtime:+$('pm-overtime').value||0,fuel_allowance:+$('pm-fuel').value||0,
+      overtime:+$('pm-overtime').value||0,fuel_allowance:0,
       salary_advance:+$('pm-advance').value||0,ug_credit:+$('pm-ug').value||0,other_deductions:+$('pm-other').value||0,
       paye_override:ov===''?null:+ov,
+      bank_name:$('pm-bank').value.trim(),
+      bank_account:this._acctMasked?this._acctReal:$('pm-account').value.trim(),
       updated_at:new Date().toISOString()}]);
     if(r){
-      const acctVal=this._acctMasked?this._acctReal:$('pm-account').value.trim();
-      await API._upsert('hr_staff_files',[{staff_id:id,bank_name:$('pm-bank').value.trim(),bank_account:acctVal}]);
+
       closeModal('pay-modal');toast('Pay setup saved ✓');this.renderPayroll('m-');this.renderPayroll('st-');
     }
     else $('pm-msg').innerHTML='<span style="color:var(--red)">Save failed.</span>';
@@ -4212,9 +4593,10 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     return true;
   }
   async exportBankAdvice(p){
+    if(!this._requireApproval())return;
     if(!this._payGuard())return;
     const month=$(p+'pay-month').value||'';
-    const files=await API._get('hr_staff_files','select=staff_id,bank_name,bank_account')||[];
+    const files=await API.secureGet('payroll_staff','select=staff_id,bank_name,bank_account')||[];
     const bk={};files.forEach(f=>bk[f.staff_id]=f);
     let csv='THP-GHANA BANK ADVICE,'+month+'\nStaff ID,Name,Bank,Account Number,Net Pay (GHS)\n';
     let tot=0,missing=[];
@@ -4268,29 +4650,72 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(unalloc)toast(unalloc+' staff have no allocation set — shown as "Unallocated"','info');
   }
   async emailPayslips(p){
+    if(!this._requireApproval())return;
     if(!this._payGuard())return;
     const month=this._payMonthLabel(p);
     const withEmail=this._payCalc.filter(r=>r.email);
     const without=this._payCalc.filter(r=>!r.email);
+
+    // ── Safety check: two staff must never share an email address,
+    //    or one person would receive the other's payslip. ──
+    const byEmail={};
+    withEmail.forEach(r=>{const e=r.email.trim().toLowerCase();(byEmail[e]=byEmail[e]||[]).push(r.name);});
+    const dupes=Object.entries(byEmail).filter(([e,names])=>names.length>1);
+    if(dupes.length){
+      const detail=dupes.map(([e,names])=>'• '+e+'  →  '+names.join(' AND ')).join('\n');
+      alert('PAYSLIPS NOT SENT\n\nThese staff share the same email address, so one would receive '
+        +'another person\'s payslip:\n\n'+detail
+        +'\n\nPlease correct the email addresses in Staff records, then try again.');
+      this.audit('Payslip send blocked — duplicate emails','Payroll',month,detail.replace(/\n/g,' | '));
+      return;
+    }
+    // Warn if an address does not look valid
+    const bad=withEmail.filter(r=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email.trim()));
+    if(bad.length&&!confirm('These addresses do not look valid:\n\n'
+      +bad.map(r=>'• '+r.name+' — '+r.email).join('\n')
+      +'\n\nSend anyway?'))return;
     if(!withEmail.length)return toast('No staff have email addresses on file','err');
-    if(!confirm('Send '+withEmail.length+' payslip(s) for '+month+'?\n\nEach person receives only their own payslip.'+(without.length?'\n\nNo email on file for: '+without.map(r=>r.name).join(', '):'')))return;
+    if(!confirm('Release payslips for '+month+'?\n\n'+withEmail.length+' staff will be notified by email that their payslip is ready to view in their portal.\n\nEach person can only open their own.'+(without.length?'\n\nNo email on file for: '+without.map(r=>r.name).join(', '):'')))return;
     showLoader('Sending payslips…');
+    // Payslip password: first name (lowercase) + date of birth ddmmyyyy
+    // e.g. eric14091990 — private to the individual, unlike a Staff ID.
+    const files=await API._get('hr_staff_files','select=staff_id,dob')||[];
+    const dobMap={};files.forEach(x=>{if(x.dob)dobMap[x.staff_id]=String(x.dob).slice(0,10);});
+    const noDob=withEmail.filter(r=>!dobMap[r.id]);
+    if(noDob.length&&!confirm('These staff have no date of birth on file, so their payslip '
+      +'cannot be password-protected:\n\n'+noDob.map(r=>'• '+r.name).join('\n')
+      +'\n\nAdd their date of birth in Staff Files first, or continue and send theirs unprotected?'))return;
+    const pwFor=r=>{
+      const d=dobMap[r.id];if(!d)return '';
+      const [y,m,dd]=d.split('-');
+      const first=String(r.name||'').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g,'');
+      return first+dd+m+y;
+    };
     const payload=[];
     for(const r of withEmail){
       payload.push({name:r.name,id:r.id,email:r.email,unit:r.unit||'',month,
-        net:r.net.toFixed(2),html:await this._payslipHTML(r,month)});
+        net:r.net.toFixed(2),pw:pwFor(r),html:await this._payslipHTML(r,month)});
     }
     const res=await API.gasPost({action:'sendPayslips',month,slips:payload});
     hideLoader();
     if(res&&res.success)toast('Payslips sent: '+res.sent+(res.failed?(' · failed: '+res.failed):'')+' ✓');
     else toast('Payslip sending failed'+(res&&res.error?': '+res.error:' — check the Apps Script deployment'),'err');
   }
+  get _logo(){return 'data:image/png;base64,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b7F64GBx2vSp+/YeWnbZoqamXKEx29b29sQJkydNGre5bWs+yytvvvKyj537qU+fe86imatWvfT6q9uXffSsK68568PnzNuwYcv8s6bP+9DMKJJ8IffGph3G1LGPlOrRyc4op+AWj+YXIHWnUqh60M9OO73gZ4ZSCacJkEJ8Q571auVyGGQy1hgCR7WKcpoNslGoYRQ3t/ilYihicznf80hEqpU0G2TJaBJzpRIvXjT5775744ov3PNWW/tFF0+8554vXXXV377zdrcfhGPG+V3tlMReU3OmEhaNoWyQq8VQJZDWnRJQI0gtONT01Ky3YnLihEAgOGhO9OeXXDsp32CHUlnJgSKQqKbiKNeQd84myqoJvBwrwlCtCQoNGoVRNtsKJVGp1UDQTDYXO2WF05rxTWdPJBbnXTCjqaVw2eWLn3jytT17u1paRolWuzsi6xVsJomS1HoFQCtRYuoEFoAOVQZpELWggdAwEIkJAKgGiglWHBd7K84Z5ZJoam2+oTnDSNlYh5gUbI3TtD5jfeivKRmGc6NHB6Vqdev29k8v/78Lzp02eeq41atfeXlDm5fJplpRwHpZEacaExsVByJjbP9j0Qj6w/EVNAATgjRxra3m5luvCDyfKCZjX31155o1rxkvX58mVQXqCldijOdSIoI1XqlYPP/cCf/6wO1/9e2fPHD/G51d+m+r1oujIJPP5loECRsnYkRhLJFrSl2FWTybSROriJWE/ns1MYBE4aw1XZ3FbdvevnHFRyQxG9a3/b97brjt1uW9XWmxu9rTWe7tDks9pagEpA1dBytpWo4q1d7O3qxf2LTx4E0r7nnql20Nza4S7/OMbSoU0iQVxEReb1ccVStJXO3t6oqisrryfffffNLYfLHYyYb664FBAoUek08MpRIMEiViSRP7ztZuAPsPVR5++KUv/9k1S5bM/tV/rP+j267dsWtXtYbLl511/71Pr1699s47rhw/ZXTGZJ59YuOjj7918x9fesq0UT/7t02P/eqVS5bO+dznl7FJN7ftuf++X8VS/sy1H75w6Xw1urVt908fefHP77j5nLMn3/G1a37w4Jq1a7fmsllVGVDlvBcdGmYFlPpLewSBDyCNklGjMpPGNx882P3aK3uqYfWG6y/Zu3dfGNdyjXLtZ8+5aeWl3/3WY4/8Yt3d375uzmlNL67b8DsXz58y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';}
+
+  /* Official THP-Ghana stamp — applied to APPROVED payslips only */
+  get _stamp(){return 'data:image/png;base64,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';}
+
   /* ── Payslip in THP format ── */
+  /* Organisation details, from Settings rather than hardcoded */
+  _org(k,d){return (this.settings&&this.settings[k])||d;}
   async _payslipHTML(r,month){
+    const approved=!!this._payApproved;
     const f=v=>(+v||0).toLocaleString('en-GH',{minimumFractionDigits:2,maximumFractionDigits:2});
     const dash=v=>(+v)?f(v):'-';
     let bank={};
-    try{const hf=await API.getHRFile(r.id);bank=hf||{};}catch(e){}
+    try{const rows=await API.secureGet('payroll_staff','select=bank_name,bank_account&staff_id=eq.'+encodeURIComponent(r.id));
+        bank=(rows&&rows[0])||{};}catch(e){}
     const s=this.staff[r.id]||{};
     const row=(l,v)=>`<tr><td class="lbl">${l}</td><td class="cur">GH₵</td><td class="amt">${v}</td></tr>`;
     return `<html><head><meta charset="UTF-8"><style>
@@ -4323,10 +4748,13 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       .sig span{display:inline-block;border-bottom:1px solid #777;width:58%;margin-left:6px}
     </style></head><body><div class="sheet">
       <div class="top">
-        <div><div class="org">THE HUNGER PROJECT – GHANA</div>
-          <div class="addr">PMB CT 7, Cantonments Accra, Ghana</div>
-          <div class="mail">email: thpghana@thp.org</div></div>
-        <div class="ptitle">PAYSLIP</div>
+        <div><div class="org">${this._org('org_name','The Hunger Project — Ghana').toUpperCase()}</div>
+          <div class="addr">${this._org('org_address','PMB CT 7, Cantonments Accra, Ghana')}</div>
+          <div class="mail">email: ${this._org('org_email','thpghana@thp.org')}</div></div>
+        <div style="text-align:right">
+          <img src="${this._logo}" alt="THP" style="width:74px;height:auto;display:inline-block;margin-bottom:4px">
+          <div class="ptitle">PAYSLIP</div>
+        </div>
       </div>
       <div class="bar"></div>
       <div class="pad">
@@ -4343,14 +4771,15 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
             <tr><td class="k">Designation :</td><td>${r.designation||''}</td></tr>
             <tr><td class="k">Bank Account No.</td><td>${this._maskAcct(bank.bank_account)}</td></tr>
             <tr><td class="k">Pay Period:</td><td>${month}</td></tr>
+            <tr><td class="k">Generated:</td><td>${new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td></tr>
           </table></div>
         </div>
         <div class="cols" style="margin-top:16px">
           <div class="col"><table>
             <tr class="hd"><th>EARNINGS</th><th></th><th class="r">AMOUNT</th></tr>
             ${row('Basic Salary',f(r.basic))}${row('Arrears',dash(r.arrears))}${row('Incentives',dash(r.incent))}
-            ${row('Bonus',dash(r.bonus))}${row('Over Time Pay',dash(r.ot))}${row('Fuel Allowance',dash(r.fuel))}
-            ${r.taxA+r.nonTax>0?row('Other Allowances',f(r.taxA+r.nonTax)):''}
+            ${row('Bonus',dash(r.bonus))}${row('Over Time Pay',dash(r.ot))}
+            ${(r.allowances||[]).map(a=>row(a.n,f(a.a))).join('')}
           </table></div>
           <div class="col"><table>
             <tr class="hd"><th>DEDUCTIONS</th><th></th><th class="r">AMOUNT</th></tr>
@@ -4366,37 +4795,955 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
           </table></div>
         </div>
       </div>
-      <div class="sig"><div>Employee Signature :<span></span></div><div>Employer Signature :<span></span></div></div>
+      <div class="sig">
+        <div>Employee Signature :<span></span></div>
+        <div style="position:relative">Employer Signature :<span></span>
+          ${approved?`<img src="${this._stamp}" alt="" style="position:absolute;right:6%;bottom:-6px;width:150px;opacity:.92">`:''}
+        </div>
+      </div>
     </div></body></html>`;
   }
   async previewPayslip(p){
     if(!this._payGuard())return;
-    const month=this._payMonthLabel(p);
-    const r=this._payCalc[0];
-    const html=await this._payslipHTML(r,month);
+    // Open synchronously with the click — once we await, the browser
+    // treats a new window as an unsolicited popup and blocks it.
     const w=window.open('','_blank');
-    w.document.write(html+'<div style="text-align:center;padding:14px" class="no-print"><button onclick="window.print()" style="padding:9px 24px;background:#2D3592;color:#fff;border:0;border-radius:8px;font-weight:600;cursor:pointer">🖨 Print / Save as PDF</button></div>');
-    w.document.close();
-    toast('Showing payslip for '+r.name+' — use Print to save as PDF','info');
+    if(!w){toast('Your browser blocked the preview window. Allow pop-ups for this site, then try again.','err');return;}
+    w.document.write('<html><head><meta charset="UTF-8"><title>Payslips — THP-Ghana</title></head>'
+      +'<body style="font-family:Arial,sans-serif;padding:40px;text-align:center;color:#2D3592">'
+      +'<h3>Preparing payslips…</h3><p style="color:#64748b">Please wait.</p></body></html>');
+    const month=this._payMonthLabel(p);
+    const list=this._payCalc||[];
+    try{
+      const pages=[];
+      for(const r of list){pages.push(await this._payslipHTML(r,month));}
+      const bodies=pages.map(h=>{
+        const m=h.match(/<body>([\s\S]*)<\/body>/i);
+        return '<div class="slip-page">'+(m?m[1]:h)+'</div>';
+      }).join('');
+      const head=pages[0]?pages[0].match(/<head>([\s\S]*)<\/head>/i):null;
+      w.document.open();
+      w.document.write('<html><head>'+(head?head[1]:'')
+        +'<style>.slip-page{page-break-after:always;margin-bottom:26px}'
+        +'.slip-page:last-child{page-break-after:auto}'
+        +'@media screen{.slip-page{box-shadow:0 2px 14px rgba(0,0,0,.12);margin:0 auto 26px;max-width:960px}}'
+        +'</style></head><body>'+bodies
+        +'<div style="text-align:center;padding:16px" class="no-print">'
+        +'<button onclick="window.print()" style="padding:10px 26px;background:#2D3592;color:#fff;border:0;border-radius:8px;font-weight:600;cursor:pointer">🖨 Print / Save all as PDF</button></div>'
+        +'</body></html>');
+      w.document.close();
+      toast(list.length+' payslip(s) ready — one per page','info');
+    }catch(e){
+      try{w.document.open();w.document.write('<p style="font-family:Arial;padding:40px;color:#dc2626">Could not build the payslips: '+(e.message||e)+'</p>');w.document.close();}catch(_){}
+      toast('Preview failed: '+(e.message||e),'err');
+    }
   }
   _payMonthLabel(p){
     const v=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
     const d=new Date(v+'-01');
     return d.toLocaleString('en',{month:'short'})+'-'+d.getFullYear();
   }
-  async savePayrollRun(p){
-    if(!this._payCalc||!this._payCalc.length)return toast('Nothing calculated yet','err');
-    const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
-    const r=await API._upsert('payroll_runs',[{id:'RUN-'+month,month,data:JSON.stringify(this._payCalc),processed_at:new Date().toISOString()}]);
-    if(r){this.audit('Payroll run saved','Payroll',month,this._payCalc.length+' staff');toast('Payroll run for '+month+' saved ✓');}else toast('Save failed','err');
+  /* ── Payroll approval workflow ──
+     Draft → Submitted → Approved. Exports and payslips are locked
+     until the Country Leader approves. Ernest and Emmanuel prepare
+     and submit; Agatha approves or returns. ── */
+  get PAY_PREPARERS(){return['THPG/05/2025','THPG/01/2026-3','ADMIN01'];}
+  get PAY_APPROVERS(){return['THPG/12/2024','ADMIN01'];}
+  _canPrepare(){return this.PAY_PREPARERS.includes(this.user?.id);}
+  _canApprove(){return this.PAY_APPROVERS.includes(this.user?.id);}
+  _runId(p){return 'RUN-'+($(p+'pay-month').value||new Date().toISOString().slice(0,7));}
+  async _loadRun(p){
+    const rows=await API.secureGet('payroll_runs','id=eq.'+encodeURIComponent(this._runId(p)));
+    return (rows&&rows[0])||null;
   }
-  /* ── Payroll Phase B: bank advice, statutory returns, payslips ── */
+  async renderPayStatus(p){
+    const el=$(p+'pay-status');if(!el)return;
+    const sub0=$(p+'pay-submit'),app0=$(p+'pay-approve'),ret0=$(p+'pay-return');
+    // Hide all three first — only the role-appropriate ones are shown below.
+    [sub0,app0,ret0].forEach(b=>{if(b)b.style.display='none';});
+    const run=await this._loadRun(p);
+    this._curRun=run;
+    const sub=$(p+'pay-submit'),app=$(p+'pay-approve'),ret=$(p+'pay-return');
+    const st=run?.status||'None';
+    const show=(e,v)=>{if(e)e.style.display=v?'inline-block':'none';};
+    if(!run){
+      el.style.display='none';
+      show(sub,this._canPrepare());show(app,false);show(ret,false);
+      return;
+    }
+    el.style.display='block';
+    const badge={Draft:'none',Submitted:'amber',Approved:'green',Returned:'red'}[st]||'none';
+    let line=`<span class="c-flag ${badge}">${st}</span>`;
+    if(run.prepared_by)line+=` &nbsp;Prepared by <strong>${run.prepared_by}</strong>`;
+    if(run.submitted_by)line+=` &nbsp;· Submitted by <strong>${run.submitted_by}</strong> ${run.submitted_at?String(run.submitted_at).slice(0,10):''}`;
+    if(run.approved_by)line+=` &nbsp;· Approved by <strong>${run.approved_by}</strong> ${run.approved_at?String(run.approved_at).slice(0,10):''}`;
+    if(run.approver_note)line+=`<br><span style="color:var(--red)">Note: ${run.approver_note}</span>`;
+    el.innerHTML=line;
+    show(sub,this._canPrepare()&&(st==='Draft'||st==='Returned'));
+    show(app,this._canApprove()&&st==='Submitted');
+    show(ret,this._canApprove()&&st==='Submitted');
+    // Lock distribution until approved
+    this._payApproved=(st==='Approved');
+  }
+  _requireApproval(){
+    if(this._payApproved)return true;
+    toast('This payroll run must be approved by the Country Leader first','err');
+    return false;
+  }
+  async savePayrollRun(p){
+    if(!this._canPrepare())return toast('Only Finance can prepare payroll','err');
+    if(!this._payCalc||!this._payCalc.length)return toast('Recalculate first','err');
+    const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
+    const cur=await this._loadRun(p);
+    if(cur&&cur.status==='Approved')return toast('This run is already approved and cannot be changed','err');
+    if(cur&&cur.status==='Submitted')return toast('This run is awaiting approval — it cannot be edited','err');
+    const tot=this._payTotals();
+    const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
+      data:JSON.stringify(this._payCalc),totals:JSON.stringify(tot),
+      status:cur?.status==='Returned'?'Returned':'Draft',
+      prepared_by:this.user.name,prepared_at:new Date().toISOString(),
+      processed_at:new Date().toISOString()}]);
+    if(r){this.audit('Payroll draft saved','Payroll',month,this._payCalc.length+' staff');
+      toast('Draft saved for '+month+' ✓');this.renderPayStatus(p);}
+    else toast('Save failed: '+(API.lastError||'unknown'),'err');
+  }
+  _payTotals(){
+    const t={gross:0,ssnitEmp:0,tier3:0,paye:0,net:0,cost:0};
+    (this._payCalc||[]).forEach(r=>Object.keys(t).forEach(k=>t[k]+=(+r[k]||0)));
+    t.staff=(this._payCalc||[]).length;
+    return t;
+  }
+  async submitPayrollRun(p){
+    if(!this._canPrepare())return toast('Only Finance can submit payroll','err');
+    if(!this._payCalc||!this._payCalc.length)return toast('Recalculate first','err');
+    const month=$(p+'pay-month').value;
+    const t=this._payTotals();
+    if(!confirm('Submit payroll for '+month+' to the Country Leader?\n\n'
+      +t.staff+' staff · Net payout '+this._ghs(t.net)+'\n\nOnce submitted it cannot be edited until it is approved or returned.'))return;
+    await this.savePayrollRun(p);
+    const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
+      status:'Submitted',submitted_by:this.user.name,submitted_at:new Date().toISOString(),approver_note:''}]);
+    if(!r)return toast('Submit failed: '+(API.lastError||'unknown'),'err');
+    this.audit('Payroll submitted for approval','Payroll',month,t.staff+' staff · net '+t.net.toFixed(2));
+    const cl=this.staff[COUNTRY_LEADER_ID];
+    if(cl?.email)API.gasPost({action:'payrollNotify',stage:'submitted',month,
+      to:cl.email,toName:cl.name,by:this.user.name,
+      staffCount:t.staff,net:t.net.toFixed(2)}).catch(()=>{});
+    toast('Submitted to the Country Leader for approval ✓');
+    this.renderPayStatus(p);
+  }
+  async approvePayrollRun(p){
+    if(!this._canApprove())return toast('Only the Country Leader can approve payroll','err');
+    const month=$(p+'pay-month').value;
+    const t=this._curRun?.totals?JSON.parse(this._curRun.totals):this._payTotals();
+    if(!confirm('Approve payroll for '+month+'?\n\n'+(t.staff||'?')+' staff · Net payout '
+      +this._ghs(t.net||0)+'\n\nOnce approved, Finance can issue payslips and the bank advice.'))return;
+    const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
+      status:'Approved',approved_by:this.user.name,approved_at:new Date().toISOString(),approver_note:''}]);
+    if(!r)return toast('Approval failed: '+(API.lastError||'unknown'),'err');
+    this.audit('Payroll APPROVED','Payroll',month,'net '+(t.net||0));
+    ['THPG/05/2025','THPG/01/2026-3'].forEach(id=>{
+      const e=this.staff[id]?.email;
+      if(e)API.gasPost({action:'payrollNotify',stage:'approved',month,to:e,toName:this.staff[id].name,
+        by:this.user.name,staffCount:t.staff||0,net:(t.net||0).toFixed(2)}).catch(()=>{});
+    });
+    toast('Payroll approved ✓ — Finance can now issue payslips');
+    this.renderPayStatus(p);
+  }
+  async returnPayrollRun(p){
+    if(!this._canApprove())return toast('Only the Country Leader can return payroll','err');
+    const note=prompt('Why are you returning this payroll run?\n\nFinance will see this note.');
+    if(note===null)return;
+    if(!note.trim())return toast('Please give a reason','err');
+    const month=$(p+'pay-month').value;
+    const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
+      status:'Returned',approver_note:note.trim(),approved_by:'',approved_at:null}]);
+    if(!r)return toast('Return failed: '+(API.lastError||'unknown'),'err');
+    this.audit('Payroll returned to Finance','Payroll',month,note.trim());
+    ['THPG/05/2025','THPG/01/2026-3'].forEach(id=>{
+      const e=this.staff[id]?.email;
+      if(e)API.gasPost({action:'payrollNotify',stage:'returned',month,to:e,toName:this.staff[id].name,
+        by:this.user.name,note:note.trim()}).catch(()=>{});
+    });
+    toast('Returned to Finance with your note');
+    this.renderPayStatus(p);
+  }
   exportPayrollCSV(p){
     if(!this._payCalc||!this._payCalc.length)return toast('Nothing to export','err');
     const month=$(p+'pay-month').value||'';
     let csv='Staff ID,Name,Unit,Basic,Gross,SSNIT Employee,Provident Fund,PAYE,Net Pay,Employer Cost\n';
     this._payCalc.forEach(r=>{csv+=`"${r.id}","${r.name}","${r.unit||''}",${r.basic.toFixed(2)},${r.gross.toFixed(2)},${r.ssnitEmp.toFixed(2)},${r.tier3.toFixed(2)},${r.paye.toFixed(2)},${r.net.toFixed(2)},${r.cost.toFixed(2)}\n`;});
     this._dl(csv,'THP_Payroll_'+month+'.csv','text/csv');
+  }
+
+  /* ═══════════════════════════════════════════
+     MY PAYSLIPS — staff view their own, in-system
+  ═══════════════════════════════════════════ */
+  async renderMyPayslips(prefix){
+    const body=$((prefix==='m-')?'m-slip-body':'st-slip-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="6" style="color:var(--text3)">Loading…</td></tr>';
+    const r=await API.gasPost({action:'myPayslips',staffId:this.user.id,token:API._sessTok()});
+    if(!r||!r.success){
+      body.innerHTML='<tr><td colspan="6" style="color:var(--red)">Could not load payslips'+(r?.error?': '+r.error:'')+'</td></tr>';
+      return;
+    }
+    const slips=r.slips||[];
+    this._mySlips=slips;
+    if(!slips.length){body.innerHTML='<tr><td colspan="6"><div class="empty"><div class="empty-ico">🧾</div>No approved payslips yet</div></td></tr>';return;}
+    body.innerHTML=slips.map((sl,i)=>`<tr><td><strong>${sl.month}</strong></td>
+      <td>${this._ghs(sl.gross)}</td><td>${this._ghs(sl.totalDed)}</td>
+      <td><strong>${this._ghs(sl.net)}</strong></td>
+      <td style="font-size:.76rem">${sl.approvedAt?String(sl.approvedAt).slice(0,10):'—'}</td>
+      <td><button class="bsm bsm-navy" onclick="APP.viewMyPayslip(${i})">🧾 View</button></td></tr>`).join('');
+    this._setBadge('slip',0);
+  }
+  async viewMyPayslip(i){
+    const sl=(this._mySlips||[])[i];if(!sl)return;
+    // Open synchronously with the click, or the browser blocks the popup.
+    const w=window.open('','_blank');
+    if(!w){toast('Your browser blocked the window. Allow pop-ups for this site, then try again.','err');return;}
+    w.document.write('<html><body style="font-family:Arial;padding:40px;text-align:center;color:#2D3592"><h3>Opening your payslip…</h3></body></html>');
+    try{
+      const me=this.staff[this.user.id]||{};
+      const r={...sl,id:this.user.id,name:this.user.name,unit:me.unit||'',email:me.email||''};
+      this._payApproved=true;              // only approved runs are returned
+      const html=await this._payslipHTML(r,sl.month);
+      w.document.open();
+      w.document.write(html+'<div style="text-align:center;padding:14px" class="no-print">'
+        +'<button onclick="window.print()" style="padding:9px 24px;background:#2D3592;color:#fff;border:0;border-radius:8px;font-weight:600;cursor:pointer">🖨 Print / Save as PDF</button></div>');
+      w.document.close();
+    }catch(e){
+      try{w.document.open();w.document.write('<p style="font-family:Arial;padding:40px;color:#dc2626">Could not open the payslip.</p>');w.document.close();}catch(_){}
+    }
+  }
+
+  /* ═══════════════════════════════════════════
+     ONBOARDING / OFFBOARDING CHECKLISTS
+  ═══════════════════════════════════════════ */
+  _obTemplate(kind){
+    if(kind==='offboarding')return [
+      {task:'Resignation / end-of-contract letter received',owner:'HR',done:false},
+      {task:'Exit interview conducted',owner:'HR',done:false},
+      {task:'Handover notes completed and accepted',owner:'Supervisor',done:false},
+      {task:'All THP assets returned (laptop, phone, ID, keys)',owner:'HR / Admin',done:false},
+      {task:'Email and system accounts deactivated',owner:'IT',done:false},
+      {task:'Attendance system account disabled',owner:'Admin',done:false},
+      {task:'Outstanding leave balance calculated',owner:'HR',done:false},
+      {task:'Final salary and entitlements processed',owner:'Finance',done:false},
+      {task:'SSNIT and statutory obligations settled',owner:'Finance',done:false},
+      {task:'Clearance certificate issued',owner:'HR',done:false}];
+    return [
+      {task:'Signed contract received and filed',owner:'HR',done:false},
+      {task:'Staff ID created in attendance system',owner:'Admin',done:false},
+      {task:'THP email address created',owner:'IT',done:false},
+      {task:'Staff file completed (DOB, next of kin, SSNIT)',owner:'HR',done:false},
+      {task:'Bank details collected for payroll',owner:'Finance',done:false},
+      {task:'Laptop / equipment issued',owner:'HR / Admin',done:false},
+      {task:'Office ID card issued',owner:'HR',done:false},
+      {task:'Orientation and induction completed',owner:'HR',done:false},
+      {task:'Introduced to team and supervisor assigned',owner:'Supervisor',done:false},
+      {task:'Safeguarding and code of conduct signed',owner:'HR',done:false},
+      {task:'Added to payroll',owner:'Finance',done:false}];
+  }
+  async renderChecklists(){
+    const body=$('ob-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="7" style="color:var(--text3)">Loading…</td></tr>';
+    let rows=await API._get('staff_checklists','order=created_at.desc&limit=300')||[];
+    this._checklists=rows;
+    const f=$('ob-filter')?.value||'';
+    let list=rows;
+    if(f==='open')list=list.filter(r=>r.status!=='Completed');
+    else if(f)list=list.filter(r=>r.kind===f);
+    if(!list.length){body.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-ico">🚀</div>No checklists yet</div></td></tr>';return;}
+    body.innerHTML=list.map(c=>{
+      let items=[];try{items=JSON.parse(c.items||'[]');}catch(e){}
+      const done=items.filter(i=>i.done).length;
+      const pct=items.length?Math.round(done/items.length*100):0;
+      const bar=`<div style="display:flex;align-items:center;gap:.4rem"><div style="flex:1;height:7px;background:var(--surf2);border-radius:4px;overflow:hidden;min-width:70px"><div style="width:${pct}%;height:100%;background:${pct===100?'#16a34a':'#2D3592'}"></div></div><span style="font-size:.72rem;color:var(--text2)">${done}/${items.length}</span></div>`;
+      const st=c.status==='Completed'?'<span class="c-flag green">Completed</span>':'<span class="c-flag amber">In Progress</span>';
+      return `<tr><td><strong>${this._sName(c.staff_id)}</strong></td>
+        <td>${c.kind==='offboarding'?'📤 Offboarding':'🚀 Onboarding'}</td>
+        <td style="font-size:.78rem">${c.start_date?fmtISO(c.start_date):'—'}</td>
+        <td style="font-size:.78rem">${c.target_date?fmtISO(c.target_date):'—'}</td>
+        <td>${bar}</td><td>${st}</td>
+        <td><button class="bsm bsm-navy" onclick="APP.openChecklistModal('${c.id}')">✏</button></td></tr>`;
+    }).join('');
+  }
+  openChecklistModal(id){
+    const c=id?(this._checklists||[]).find(x=>x.id===id):null;
+    this._popStaffSel('ob-staff',c?.staff_id);
+    $('ob-id').value=c?.id||'';
+    $('ob-kind').value=c?.kind||'onboarding';
+    $('ob-start').value=c?.start_date?String(c.start_date).slice(0,10):new Date().toISOString().slice(0,10);
+    $('ob-target').value=c?.target_date?String(c.target_date).slice(0,10):'';
+    $('ob-notes').value=c?.notes||'';
+    $('ob-title').textContent=(c?.kind==='offboarding')?'📤 Offboarding Checklist':'🚀 Onboarding Checklist';
+    let items=[];try{items=JSON.parse(c?.items||'[]');}catch(e){}
+    this._obItems=items.length?items:this._obTemplate($('ob-kind').value);
+    this._renderChecklistItems();
+    $('ob-msg').textContent='';
+    $('checklist-modal').classList.add('open');
+  }
+  _obLoadTemplate(){
+    if($('ob-id').value)return;           // don't overwrite an existing checklist
+    this._obItems=this._obTemplate($('ob-kind').value);
+    $('ob-title').textContent=$('ob-kind').value==='offboarding'?'📤 Offboarding Checklist':'🚀 Onboarding Checklist';
+    this._renderChecklistItems();
+  }
+  _renderChecklistItems(){
+    const el=$('ob-items');if(!el)return;
+    el.innerHTML=this._obItems.map((it,i)=>`
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem;flex-wrap:wrap">
+        <input type="checkbox" ${it.done?'checked':''} onchange="APP._obSet(${i},'done',this.checked)">
+        <input class="fi" style="flex:2;min-width:180px" value="${(it.task||'').replace(/"/g,'&quot;')}" oninput="APP._obSet(${i},'task',this.value)">
+        <input class="fi" style="width:110px" value="${it.owner||''}" placeholder="Owner" oninput="APP._obSet(${i},'owner',this.value)">
+        <button class="bsm" style="background:var(--surf);border:1px solid var(--border);color:var(--text2)" onclick="APP._obDel(${i})">✕</button>
+      </div>`).join('');
+  }
+  _obSet(i,f,v){this._obItems[i][f]=v;if(f==='done'){this._obItems[i].done_at=v?new Date().toISOString():null;}}
+  _obDel(i){this._obItems.splice(i,1);this._renderChecklistItems();}
+  addChecklistItem(){this._obItems.push({task:'',owner:'',done:false});this._renderChecklistItems();}
+  async saveChecklist(){
+    const staff=$('ob-staff').value;
+    if(!staff)return $('ob-msg').innerHTML='<span style="color:var(--red)">Select a staff member.</span>';
+    const id=$('ob-id').value||this._uid('CHK');
+    const allDone=this._obItems.length&&this._obItems.every(i=>i.done);
+    $('ob-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('staff_checklists',[{id,staff_id:staff,kind:$('ob-kind').value,
+      status:allDone?'Completed':'In Progress',items:JSON.stringify(this._obItems),
+      start_date:$('ob-start').value||null,target_date:$('ob-target').value||null,
+      completed_at:allDone?new Date().toISOString():null,
+      notes:$('ob-notes').value.trim(),created_by:this.user.name,updated_at:new Date().toISOString()}]);
+    if(r){this.audit('Checklist saved','HR',this._sName(staff),$('ob-kind').value+(allDone?' · COMPLETED':''));
+      closeModal('checklist-modal');toast('Checklist saved ✓');this.renderChecklists();}
+    else $('ob-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+
+  /* ═══════════════════════════════════════════
+     ASSET / EQUIPMENT REGISTER
+  ═══════════════════════════════════════════ */
+  async renderAssets(){
+    const body=$('as-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="8" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('assets','order=id.asc&limit=500')||[];
+    this._assets=rows;
+    const q=($('as-search')?.value||'').trim().toLowerCase();
+    const st=$('as-status')?.value||'';
+    let list=rows;
+    if(q)list=list.filter(a=>[a.id,a.name,a.serial_no,a.category].join(' ').toLowerCase().includes(q));
+    if(st)list=list.filter(a=>(a.status||'Available')===st);
+    const sm=$('as-summary');
+    if(sm){
+      const c=k=>rows.filter(a=>(a.status||'Available')===k).length;
+      const val=rows.reduce((t,a)=>t+(+a.value||0),0);
+      const box=(n,l,col,ic)=>`<div class="cs-box"><div style="font-size:1.05rem;line-height:1">${ic}</div><div class="cs-num" style="color:${col}">${n}</div><div class="cs-lbl">${l}</div></div>`;
+      sm.innerHTML=box(rows.length,'Total Assets','','💻')+box(c('Assigned'),'Assigned','#2D3592','👤')
+        +box(c('Available'),'Available','#16a34a','✅')+box(c('Repair')+c('Lost'),'Repair / Lost','#dc2626','⚠')
+        +box(this._ghs(val),'Register Value','','₵');
+    }
+    if(!list.length){body.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-ico">💻</div>No assets found</div></td></tr>';return;}
+    const cc={Available:'green',Assigned:'none',Repair:'amber',Retired:'none',Lost:'red'};
+    body.innerHTML=list.map(a=>{
+      const assigned=(a.status==='Assigned');
+      return `<tr><td style="font-weight:600">${a.id}</td>
+        <td>${a.name||''}${a.value>0?`<br><span style="font-size:.68rem;color:var(--text3)">${this._ghs(a.value)}</span>`:''}</td>
+        <td style="font-size:.78rem">${a.category||'—'}</td>
+        <td style="font-size:.74rem">${a.serial_no||'—'}</td>
+        <td style="font-size:.78rem">${a.condition||'—'}</td>
+        <td><span class="c-flag ${cc[a.status]||'none'}">${a.status||'Available'}</span></td>
+        <td style="font-size:.78rem">${assigned?this._sName(a.assigned_to):'—'}</td>
+        <td>${assigned
+          ? `<button class="bsm" style="background:rgba(22,163,74,.14);color:#16a34a" onclick="APP.openIssueModal('${a.id}','Returned')">📥 Return</button>`
+          : `<button class="bsm bsm-navy" onclick="APP.openIssueModal('${a.id}','Issued')">📤 Issue</button>`}
+          <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.openAssetModal('${a.id}')">✏</button>
+          <button class="bsm" style="background:var(--surf2);color:var(--text2);border:1px solid var(--border)" onclick="APP.assetHistory('${a.id}')">🕘</button>
+          <button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.deleteAsset('${a.id}')">🗑</button></td></tr>`;
+    }).join('');
+  }
+  _asCatChange(){
+    const sel=$('as-cat'),box=$('as-cat-other');
+    if(!sel||!box)return;
+    const other=sel.value==='Other';
+    box.style.display=other?'block':'none';
+    if(other)box.focus();
+  }
+  openAssetModal(id){
+    const a=id?(this._assets||[]).find(x=>String(x.id)===String(id)):null;
+    $('as-edit-id').value=a?.id||'';
+    $('as-id').value=a?.id||'';$('as-id').readOnly=!!a;
+    $('as-name').value=a?.name||'';
+    const known=['IT Equipment','Furniture','Vehicle','Phone','Office Equipment','Generator / Power','Field Equipment'];
+    const cat=a?.category||'IT Equipment';
+    if(known.includes(cat)){$('as-cat').value=cat;$('as-cat-other').value='';}
+    else{$('as-cat').value='Other';$('as-cat-other').value=cat;}
+    this._asCatChange();
+    $('as-make').value=a?.make||'';
+    $('as-model').value=a?.model||'';
+    $('as-serial').value=a?.serial_no||'';
+    $('as-pdate').value=a?.purchase_date?String(a.purchase_date).slice(0,10):'';
+    $('as-value').value=a?.value||'';
+    $('as-supplier').value=a?.supplier||'';
+    $('as-invoice').value=a?.invoice_no||'';
+    $('as-funding').value=a?.funding_source||'';
+    $('as-grant').value=a?.grant_id||'';
+    $('as-warranty').value=a?.warranty_end?String(a.warranty_end).slice(0,10):'';
+    $('as-life').value=a?.useful_life_yrs||'';
+    $('as-insured').value=String(a?.insured||false);
+    $('as-cond').value=a?.condition||'Good';
+    $('as-st').value=a?.status||'Available';
+    $('as-loc').value=a?.location||'';
+    $('as-verified').value=a?.last_verified?String(a.last_verified).slice(0,10):'';
+    $('as-ddate').value=a?.disposal_date?String(a.disposal_date).slice(0,10):'';
+    $('as-dmethod').value=a?.disposal_method||'';
+    $('as-notes').value=a?.notes||'';
+    $('as-msg').textContent='';
+    $('asset-modal').classList.add('open');
+  }
+  async saveAsset(){
+    const id=$('as-id').value.trim(),name=$('as-name').value.trim();
+    if(!id)return $('as-msg').innerHTML='<span style="color:var(--red)">Asset tag is required.</span>';
+    if(!name)return $('as-msg').innerHTML='<span style="color:var(--red)">Asset name is required.</span>';
+    $('as-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    let cat=$('as-cat').value;
+    if(cat==='Other'){
+      const typed=$('as-cat-other').value.trim();
+      if(!typed)return $('as-msg').innerHTML='<span style="color:var(--red)">Type the category name.</span>';
+      cat=typed;
+    }
+    const r=await API._upsert('assets',[{id,name,category:cat,
+      make:$('as-make').value.trim(),model:$('as-model').value.trim(),
+      serial_no:$('as-serial').value.trim(),purchase_date:$('as-pdate').value||null,
+      value:+$('as-value').value||0,supplier:$('as-supplier').value.trim(),
+      invoice_no:$('as-invoice').value.trim(),funding_source:$('as-funding').value.trim(),
+      grant_id:$('as-grant').value.trim(),warranty_end:$('as-warranty').value||null,
+      useful_life_yrs:+$('as-life').value||0,insured:$('as-insured').value==='true',
+      condition:$('as-cond').value,status:$('as-st').value,location:$('as-loc').value.trim(),
+      last_verified:$('as-verified').value||null,disposal_date:$('as-ddate').value||null,
+      disposal_method:$('as-dmethod').value.trim(),
+      notes:$('as-notes').value.trim(),updated_at:new Date().toISOString()}]);
+    if(r){this.audit('Asset saved','HR',name,id+' · '+$('as-st').value);
+      closeModal('asset-modal');toast('Asset saved ✓');this.renderAssets();}
+    else $('as-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+  async deleteAsset(id){
+    const a=(this._assets||[]).find(x=>String(x.id)===String(id));if(!a)return;
+    const who=id+' — '+(a.name||'');
+    if(a.status==='Assigned')return toast('This asset is still assigned to '+this._sName(a.assigned_to)+'. Record a return first.','err');
+    if(!confirm('Delete this asset from the register?\n\n'+who+'\n\nConsider setting the status to Retired or Disposed instead, so the history is preserved.'))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+who);
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
+    await API._delete('assets','id=eq.'+encodeURIComponent(id));
+    this.audit('Asset deleted','HR',a.name||'',id);
+    toast('Asset deleted');this.renderAssets();
+  }
+  openIssueModal(assetId,action){
+    const a=(this._assets||[]).find(x=>String(x.id)===String(assetId));if(!a)return;
+    $('iss-id').value=assetId;$('iss-action').value=action;
+    $('iss-title').textContent=action==='Issued'?'📤 Issue Asset':'📥 Return Asset';
+    $('iss-asset').textContent=a.id+' — '+(a.name||'');
+    $('iss-date').value=new Date().toISOString().slice(0,10);
+    $('iss-cond').value=a.condition||'Good';
+    $('iss-note').value='';
+    const wrap=$('iss-staff-wrap');
+    if(action==='Issued'){wrap.style.display='block';this._popStaffSel('iss-staff');}
+    else{wrap.style.display='none';}
+    $('iss-msg').textContent='';
+    $('issue-modal').classList.add('open');
+  }
+  async confirmIssue(){
+    const assetId=$('iss-id').value,action=$('iss-action').value;
+    const a=(this._assets||[]).find(x=>String(x.id)===String(assetId));if(!a)return;
+    const staffId=action==='Issued'?$('iss-staff').value:(a.assigned_to||'');
+    if(action==='Issued'&&!staffId)return $('iss-msg').innerHTML='<span style="color:var(--red)">Select who it is issued to.</span>';
+    const cond=$('iss-cond').value,note=$('iss-note').value.trim();
+    $('iss-msg').innerHTML='<span style="color:var(--teal)">⏳ Recording…</span>';
+    const upd=await API._upsert('assets',[{id:assetId,name:a.name,category:a.category,serial_no:a.serial_no,
+      purchase_date:a.purchase_date,value:a.value,notes:a.notes,condition:cond,
+      status:action==='Issued'?'Assigned':'Available',
+      assigned_to:action==='Issued'?staffId:'',
+      assigned_at:action==='Issued'?new Date().toISOString():null,
+      updated_at:new Date().toISOString()}]);
+    if(!upd)return $('iss-msg').innerHTML='<span style="color:var(--red)">Failed: '+(API.lastError||'')+'</span>';
+    await API._upsert('asset_movements',[{id:this._uid('MOV'),asset_id:assetId,asset_name:a.name||'',
+      staff_id:staffId,staff_name:this._sName(staffId)||'',action,condition:cond,note,
+      handled_by:this.user.name,created_at:new Date().toISOString()}]);
+    this.audit('Asset '+action.toLowerCase(),'HR',this._sName(staffId)||'—',assetId+' · '+(a.name||''));
+    // Email record to HR and the staff member — the paper trail if the system is ever doubted
+    const st=this.staff[staffId]||{};
+    API.gasPost({action:'assetNotify',assetId,assetName:a.name||'',serial:a.serial_no||'',
+      staffId,staffName:this._sName(staffId)||'',staffEmail:st.email||'',staffPhone:st.phone||'',
+      movement:action,condition:cond,note,handledBy:this.user.name,
+      date:$('iss-date').value||new Date().toISOString().slice(0,10)}).catch(()=>{});
+    closeModal('issue-modal');
+    toast('Asset '+action.toLowerCase()+' ✓ — email record sent');
+    this.renderAssets();
+  }
+  async assetHistory(assetId){
+    const rows=await API._get('asset_movements','asset_id=eq.'+encodeURIComponent(assetId)+'&order=created_at.desc')||[];
+    const a=(this._assets||[]).find(x=>String(x.id)===String(assetId));
+    const w=window.open('','_blank');
+    w.document.write(`<html><head><meta charset="UTF-8"><title>Asset history — ${assetId}</title><style>
+      body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:14mm}
+      h1{font-size:15px;color:#2D3592;border-bottom:3px solid #2D3592;padding-bottom:7px;margin:0 0 4px}
+      .meta{font-size:10px;color:#555;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse}
+      th{background:#2D3592;color:#fff;padding:6px;text-align:left;font-size:9.5px}
+      td{padding:5px 6px;border:1px solid #e2e8f0;font-size:10px}
+      tr:nth-child(even) td{background:#f8fafc}
+      </style></head><body>
+      <h1>The Hunger Project — Ghana · Asset Movement History</h1>
+      <div class="meta"><strong>${assetId}</strong> — ${a?.name||''} ${a?.serial_no?('· Serial '+a.serial_no):''}<br>
+        Generated ${new Date().toLocaleString('en-GB')}</div>
+      <table><tr><th>Date</th><th>Action</th><th>Staff</th><th>Condition</th><th>Note</th><th>Handled by</th></tr>
+      ${rows.length?rows.map(m=>`<tr><td>${new Date(m.created_at).toLocaleString('en-GB')}</td>
+        <td>${m.action}</td><td>${m.staff_name||'—'}</td><td>${m.condition||''}</td>
+        <td>${m.note||''}</td><td>${m.handled_by||''}</td></tr>`).join('')
+        :'<tr><td colspan="6">No movements recorded</td></tr>'}
+      </table>
+      <div style="text-align:center;margin-top:16px" class="no-print"><button onclick="window.print()" style="padding:8px 22px;background:#2D3592;color:#fff;border:0;border-radius:6px;font-weight:600;cursor:pointer">🖨 Print</button></div>
+      </body></html>`);
+    w.document.close();
+  }
+  exportAssets(){
+    const rows=this._assets||[];
+    if(!rows.length)return toast('Nothing to export','err');
+    let csv='Asset Tag,Name,Category,Serial,Purchase Date,Value,Condition,Status,Assigned To\n';
+    rows.forEach(a=>{csv+=`"${a.id}","${(a.name||'').replace(/"/g,'""')}","${a.category||''}","${a.serial_no||''}","${a.purchase_date||''}",${a.value||0},"${a.condition||''}","${a.status||''}","${this._sName(a.assigned_to)||''}"\n`;});
+    this._dl(csv,'THP_Assets_'+Date.now()+'.csv','text/csv');
+  }
+
+  /* ═══════════════════════════════════════════
+     APPRAISAL WORKFLOW v2
+     Staff rates self → line manager rates → HR record.
+     Neither side can alter the other's rating.
+  ═══════════════════════════════════════════ */
+  _overallWord(v){return ['— not set','Unsatisfactory Performance','Development Needed','Meets Role Requirements','Exceeds Role Requirements','Exceptional Performance'][+v||0];}
+  _kpaSelfAvg(k){const r=(k.kpis||[]).map(x=>+x.self||0).filter(v=>v>0);return r.length?r.reduce((a,b)=>a+b,0)/r.length:0;}
+  _kpaMgrAvg(k){const r=(k.kpis||[]).map(x=>+x.mgr||0).filter(v=>v>0);return r.length?r.reduce((a,b)=>a+b,0)/r.length:0;}
+  _weighted(kpas,fn){return (kpas||[]).reduce((t,k)=>t+fn.call(this,k)*(+k.weight||0)/100,0);}
+
+  /* ── Case management v2: stages, documents, two-step delete ── */
+  _caseStages(){return ['Complaint / allegation received','Investigation carried out','Query letter issued to employee',
+    'Employee written response received','Notice of hearing issued','Disciplinary hearing held','Hearing minutes recorded',
+    'Decision / outcome issued','Right of appeal communicated','Appeal heard and concluded'];}
+  _renderCaseStages(){
+    const el=$('cs-stages');if(!el)return;
+    el.innerHTML=this._csStages.map((st,i)=>`
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem;flex-wrap:wrap">
+        <input type="checkbox" ${st.done?'checked':''} onchange="APP._csSet(${i},'done',this.checked)">
+        <span style="flex:2;min-width:200px;font-size:.8rem">${st.name}</span>
+        <input class="fi" type="date" style="width:150px" value="${st.date||''}" onchange="APP._csSet(${i},'date',this.value)">
+      </div>`).join('');
+  }
+  _csSet(i,f,v){this._csStages[i][f]=v;if(f==='done'&&v&&!this._csStages[i].date)
+    {this._csStages[i].date=new Date().toISOString().slice(0,10);this._renderCaseStages();}}
+  _renderCaseDocs(docs){
+    $('cs-docs').innerHTML=docs.length
+      ? docs.map((d,i)=>`<span class="hr-doc-chip">📎 <a href="${d.url}" target="_blank">${d.name}</a> <a href="#" onclick="APP.removeCaseDoc(${i});return false" style="color:var(--red)">✕</a></span>`).join('')
+      : '<span style="font-size:.76rem;color:var(--text3)">No documents attached yet.</span>';
+  }
+  removeCaseDoc(i){
+    let docs=[];try{docs=JSON.parse($('cs-docs-json').value||'[]');}catch(e){}
+    const d=docs[i];if(!d)return;
+    if(!confirm('Remove this document from the case file?\n\n'+d.name))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+d.name);
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
+    this.audit('Case document removed','Security',this._sName($('cs-staff').value),d.name);
+    docs.splice(i,1);
+    $('cs-docs-json').value=JSON.stringify(docs);
+    this._renderCaseDocs(docs);
+  }
+  async uploadCaseDoc(){
+    if(this._csBusy)return toast('An upload is already in progress','info');
+    const inp=$('cs-doc-file');if(!inp?.files?.length)return toast('Choose a file first','err');
+    const file=inp.files[0];
+    if(file.size>5*1024*1024)return toast('File too large — maximum 5 MB','err');
+    this._csBusy=true;
+    $('cs-msg').innerHTML='<span style="color:var(--teal)">⏳ Uploading '+(file.size/1048576).toFixed(1)+' MB — this can take 30–60 seconds…</span>';
+    try{
+      const b64=await this._fileToBase64(file);
+      const r=await API.gasPost({action:'uploadHRDoc',staffId:'CASE_'+($('cs-id').value||'new'),
+        fileName:file.name,fileData:b64,mimeType:file.type});
+      if(r&&r.success&&r.fileUrl){
+        let docs=[];try{docs=JSON.parse($('cs-docs-json').value||'[]');}catch(e){}
+        docs.push({name:file.name,url:r.fileUrl,at:new Date().toISOString().slice(0,10)});
+        $('cs-docs-json').value=JSON.stringify(docs);
+        this._renderCaseDocs(docs);inp.value='';
+        this.audit('Case document uploaded','Security',this._sName($('cs-staff').value),file.name);
+        $('cs-msg').innerHTML='<span style="color:var(--green)">✓ Uploaded — click Save to confirm.</span>';
+      }else $('cs-msg').innerHTML='<span style="color:var(--red)">Upload failed'+((r&&r.error)?': '+r.error:'')+'</span>';
+    }catch(e){$('cs-msg').innerHTML='<span style="color:var(--red)">Upload error: '+(e.message||e)+'</span>';}
+    finally{this._csBusy=false;}
+  }
+  async deleteCase(id){
+    if(this.user.id!==HR_MANAGER_ID&&this.user.role!=='admin')
+      return toast('Only HR or the Administrator can delete a case file','err');
+    const c=(this._caseRows||[]).find(x=>x.id===id);if(!c)return;
+    const who=(c.case_ref||id)+' — '+this._sName(c.staff_id);
+    if(!confirm('Delete this case file?\n\n'+who+'\n\nDisciplinary records are normally retained. Consider closing the case instead.'))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+who);
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
+    await API.secureDelete('hr_cases','id=eq.'+encodeURIComponent(id));
+    this.audit('CASE FILE DELETED','Security',this._sName(c.staff_id),(c.case_ref||id)+' · '+(c.case_type||''));
+    toast('Case deleted');
+    this.renderCases('m-');
+  }
+
+  /* ── Reviews waiting on me as line manager ── */
+  async renderToRate(){
+    const body=$('m-torate-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="5" style="color:var(--text3)">Loading…</td></tr>';
+    const rows=await API._get('performance_appraisals','line_manager=eq.'+encodeURIComponent(this.user.id)
+      +'&status=eq.Self-Assessed&order=self_submitted.desc')||[];
+    this._toRate=rows;
+    this._setGrpBadge('badge-myapr',rows.length);
+    if(!rows.length){body.innerHTML='<tr><td colspan="5" style="color:var(--text3);font-size:.8rem">Nothing awaiting your rating.</td></tr>';return;}
+    body.innerHTML=rows.map(r=>`<tr><td><strong>${this._sName(r.staff_id)}</strong></td>
+      <td>${r.period||'—'}</td><td>${(+r.self_score||0).toFixed(2)}/5</td>
+      <td style="font-size:.76rem">${r.self_submitted?String(r.self_submitted).slice(0,10):'—'}</td>
+      <td><button class="bsm bsm-navy" onclick="APP.openMgrRating('${r.id}')">📝 Rate</button></td></tr>`).join('');
+  }
+  openMgrRating(id){
+    const r=(this._toRate||[]).find(x=>x.id===id);if(!r)return;
+    this._mrRec=r;
+    let k=[];try{k=JSON.parse(r.kpas||'[]');}catch(e){}
+    this._mrKpas=k;
+    $('mr-id').value=id;
+    $('mr-who').textContent=this._sName(r.staff_id)+' — '+(r.period||'')+' ('+(r.review_type||'Annual')+')';
+    $('mr-selfoverall').value=this._overallWord(r.self_overall);
+    $('mr-mgroverall').value=r.mgr_overall||0;
+    $('mr-comment').value=r.mgr_comment||'';
+    $('mr-strengths').value=r.strengths||'';
+    $('mr-devareas').value=r.dev_areas||'';
+    $('mr-training').value=r.training_needs||r.dev_plan||'';
+    $('mr-support').value=r.support_needed||'';
+    $('mr-next').value=r.next_period_obj||'';
+    this._renderMrKpas();
+    $('mr-msg').textContent='';
+    $('mgrate-modal').classList.add('open');
+  }
+  _renderMrKpas(){
+    const el=$('mr-kpas');if(!el)return;
+    el.innerHTML=this._mrKpas.map((k,i)=>`
+      <div class="kpa-box">
+        <div class="kpa-hd"><span style="font-size:.72rem;color:var(--text3);font-weight:700">KPA ${i+1}</span>
+          <strong style="flex:1">${k.name||''}</strong><span style="font-size:.74rem;color:var(--text2)">${k.weight||0}%</span></div>
+        ${(k.kpis||[]).map((x,j)=>{
+          const self=+x.self||0,mgr=+x.mgr||0;
+          const fin=(self&&mgr)?((self+mgr)/2).toFixed(2):(mgr||self||0).toFixed(2);
+          return `<div class="kpi-row">
+            <div style="flex:2;min-width:160px;font-size:.78rem">${x.kpi||'<em style="color:var(--text3)">(no detail given)</em>'}</div>
+            <span style="font-size:.72rem;color:var(--text3)">self</span>
+            <input class="fi kr" type="number" value="${self}" readonly style="opacity:.6">
+            <span style="font-size:.72rem;color:var(--teal);font-weight:600">mine</span>
+            <input class="fi kr" type="number" min="0" max="5" step="0.5" value="${mgr}" oninput="APP._mrSet(${i},${j},this.value)">
+            <span style="font-size:.74rem">= <strong>${fin}</strong></span>
+          </div>`;}).join('')}
+        <div class="kpa-avg">Self ${this._kpaSelfAvg(k).toFixed(2)} · Manager ${this._kpaMgrAvg(k).toFixed(2)}</div>
+      </div>`).join('');
+    const self=this._weighted(this._mrKpas,this._kpaSelfAvg);
+    const mgr=this._weighted(this._mrKpas,this._kpaMgrAvg);
+    const fin=(self&&mgr)?(self+mgr)/2:(mgr||self);
+    if($('mr-self'))$('mr-self').textContent=self.toFixed(2);
+    if($('mr-mgr'))$('mr-mgr').textContent=mgr.toFixed(2);
+    if($('mr-final'))$('mr-final').textContent=fin.toFixed(2);
+  }
+  _mrSet(i,j,v){this._mrKpas[i].kpis[j].mgr=+v||0;this._renderMrKpas();}
+  async saveMgrRating(complete){
+    const id=$('mr-id').value,r=this._mrRec;if(!r)return;
+    const mgrScore=this._weighted(this._mrKpas,this._kpaMgrAvg);
+    const selfScore=this._weighted(this._mrKpas,this._kpaSelfAvg);
+    const finalScore=(selfScore&&mgrScore)?(selfScore+mgrScore)/2:(mgrScore||selfScore);
+    if(complete){
+      if(!+$('mr-mgroverall').value)return $('mr-msg').innerHTML='<span style="color:var(--red)">Select your overall assessment.</span>';
+      const unrated=this._mrKpas.some(k=>(k.kpis||[]).some(x=>(+x.self>0)&&!(+x.mgr>0)));
+      if(unrated&&!confirm('Some items the staff member rated have no rating from you.\n\nComplete anyway?'))return;
+      if(!confirm('Complete this review and send it to HR?\n\nFinal score: '+finalScore.toFixed(2)+'/5\n\nIt cannot be edited afterwards.'))return;
+    }
+    $('mr-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const upd={id,staff_id:r.staff_id,period:r.period,review_type:r.review_type,line_manager:this.user.id,
+      kpas:JSON.stringify(this._mrKpas),self_score:+selfScore.toFixed(2),mgr_score:+mgrScore.toFixed(2),
+      final_score:+finalScore.toFixed(2),mgr_overall:+$('mr-mgroverall').value||0,
+      mgr_comment:$('mr-comment').value.trim(),strengths:$('mr-strengths').value.trim(),
+      dev_areas:$('mr-devareas').value.trim(),training_needs:$('mr-training').value.trim(),
+      support_needed:$('mr-support').value.trim(),next_period_obj:$('mr-next').value.trim(),
+      updated_at:new Date().toISOString()};
+    if(complete){upd.status='Manager Reviewed';upd.mgr_submitted=new Date().toISOString();}
+    const res=await API._upsert('performance_appraisals',[upd]);
+    if(!res)return $('mr-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+    this.audit(complete?'Appraisal completed by line manager':'Appraisal rating saved','HR',
+      this._sName(r.staff_id),(r.period||'')+' · final '+finalScore.toFixed(2));
+    if(complete){
+      const st=this.staff[r.staff_id]||{},edna=this.staff[HR_MANAGER_ID];
+      [{to:st.email,name:st.name,role:'staff'},{to:edna?.email,name:edna?.name,role:'hr'}]
+        .filter(x=>x.to).forEach(x=>API.gasPost({action:'appraisalDone',to:x.to,toName:x.name,role:x.role,
+          staffName:this._sName(r.staff_id),period:r.period||'',score:finalScore.toFixed(2),
+          rating:this._overallWord($('mr-mgroverall').value),by:this.user.name}).catch(()=>{}));
+    }
+    closeModal('mgrate-modal');
+    toast(complete?'Review completed and sent to HR ✓':'Draft saved ✓');
+    this.renderToRate();this.renderPerf('m-');
+  }
+
+  /* ── Delete an appraisal (HR) — two-step ── */
+  async deleteAppraisal(id){
+    const r=(this._perfRows||[]).find(x=>x.id===id);if(!r)return;
+    const who=this._sName(r.staff_id)+' — '+(r.period||'');
+    if(!confirm('Delete this appraisal record?\n\n'+who))return;
+    const t=prompt('This cannot be undone.\n\nType DELETE to confirm removal of:\n'+who);
+    if(t===null)return;
+    if(String(t).trim().toUpperCase()!=='DELETE')return toast('Not deleted — confirmation did not match','info');
+    const ok=await API._delete('performance_appraisals','id=eq.'+encodeURIComponent(id));
+    this.audit('Appraisal deleted','HR',this._sName(r.staff_id),(r.period||'')+' · score '+(r.final_score||0));
+    toast('Appraisal deleted');
+    this.renderPerf('m-');
+  }
+
+  /* ═══════════════════════════════════════════
+     ADMIN — settings, security, health, lifecycle
+  ═══════════════════════════════════════════ */
+  async renderOrgSettings(){
+    const rows=await API._get('settings','select=key,value')||[];
+    const m={};rows.forEach(r=>m[r.key]=r.value);
+    const set=(el,k,d)=>{const e=$(el);if(e)e.value=m[k]??d;};
+    set('set-org-name','org_name','The Hunger Project — Ghana');
+    set('set-org-address','org_address','PMB CT 7, Cantonments Accra, Ghana');
+    set('set-org-email','org_email','thpghana@thp.org');
+    set('set-work-start','work_start','08:00');
+    set('set-work-end','work_end','17:00');
+    set('set-late','late_after','08:30');
+    set('set-early','early_exit_before','16:30');
+    set('set-lv-annual','leave_annual','24');
+    set('set-lv-mat','leave_maternity','65');
+    set('set-lv-pat','leave_paternity','5');
+    set('set-lv-comp','leave_compassionate','5');
+    set('set-session','session_hours','12');
+    $('set-msg').textContent='';
+  }
+  async saveOrgSettings(){
+    const pairs=[['org_name','set-org-name'],['org_address','set-org-address'],['org_email','set-org-email'],
+      ['work_start','set-work-start'],['work_end','set-work-end'],['late_after','set-late'],
+      ['early_exit_before','set-early'],['leave_annual','set-lv-annual'],['leave_maternity','set-lv-mat'],
+      ['leave_paternity','set-lv-pat'],['leave_compassionate','set-lv-comp'],['session_hours','set-session']];
+    const rows=pairs.map(([k,el])=>({key:k,value:String($(el)?.value??'')}));
+    $('set-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('settings',rows);
+    if(r){this.audit('System settings updated','Security','',rows.length+' values');
+      $('set-msg').innerHTML='<span style="color:var(--green)">✓ Saved. Some changes apply at next sign-in.</span>';
+      toast('Settings saved ✓');}
+    else $('set-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+
+  async renderSecurity(){
+    const sb=$('sec-sess-body'),lb=$('sec-log-body');
+    if(sb)sb.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Loading…</td></tr>';
+    const [sess,log]=await Promise.all([
+      API._get('sessions','select=id,staff_id,expires_at,created_at&order=created_at.desc&limit=100'),
+      API._get('login_log','select=*&order=created_at.desc&limit=100')
+    ]);
+    const now=new Date();
+    const live=(sess||[]).filter(x=>!x.expires_at||new Date(x.expires_at)>now);
+    if(sb)sb.innerHTML=live.length?live.map(x=>`<tr>
+      <td><strong>${this._sName(x.staff_id)||x.staff_id}</strong><br><span style="font-size:.7rem;color:var(--text3)">${x.staff_id}</span></td>
+      <td style="font-size:.78rem">${x.created_at?new Date(x.created_at).toLocaleString('en-GB'):'—'}</td>
+      <td style="font-size:.78rem">${x.expires_at?new Date(x.expires_at).toLocaleString('en-GB'):'—'}</td>
+      <td><button class="bsm" style="background:rgba(239,68,68,.12);color:var(--red)" onclick="APP.endSession('${x.id}','${x.staff_id}')">⏻ End</button></td></tr>`).join('')
+      :'<tr><td colspan="4" style="color:var(--text3);font-size:.8rem">Nobody is signed in.</td></tr>';
+    const f=$('sec-filter')?.value||'';
+    let rows=log||[];
+    if(f)rows=rows.filter(r=>r.outcome===f);
+    if(lb)lb.innerHTML=rows.length?rows.map(r=>`<tr>
+      <td style="font-size:.76rem;white-space:nowrap">${new Date(r.created_at).toLocaleString('en-GB')}</td>
+      <td style="font-size:.76rem">${r.staff_id||'—'}</td><td>${r.name||'—'}</td>
+      <td><span class="c-flag ${r.outcome==='success'?'green':'red'}">${r.outcome}</span></td>
+      <td style="font-size:.74rem;color:var(--text2)">${r.reason||''}</td></tr>`).join('')
+      :'<tr><td colspan="5" style="color:var(--text3);font-size:.8rem">No sign-in attempts recorded yet.</td></tr>';
+  }
+  async endSession(sid,staffId){
+    if(!confirm('Sign out '+(this._sName(staffId)||staffId)+'?\nThey will need to sign in again.'))return;
+    await API._delete('sessions','id=eq.'+encodeURIComponent(sid));
+    this.audit('Session ended by admin','Security',this._sName(staffId)||staffId,'');
+    toast('Signed out');this.renderSecurity();
+  }
+  async endAllSessions(){
+    if(!confirm('Sign EVERYONE out, including yourself?\n\nAll staff will need to sign in again.'))return;
+    const t=prompt('Type SIGNOUT to confirm.');
+    if(String(t||'').trim().toUpperCase()!=='SIGNOUT')return toast('Cancelled','info');
+    await API._delete('sessions','id=neq.__none__');
+    this.audit('All sessions ended','Security','','admin action');
+    toast('Everyone signed out');this.renderSecurity();
+  }
+
+  async renderHealth(){
+    const el=$('health-body');if(!el)return;
+    el.innerHTML='<div style="color:var(--text3);font-size:.8rem">Running checks…</div>';
+    const line=(ok,label,detail)=>`<div style="display:flex;gap:.6rem;align-items:flex-start;padding:.55rem 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1rem">${ok===null?'⚪':ok?'✅':'⚠️'}</span>
+      <div style="flex:1"><div style="font-size:.85rem;font-weight:600">${label}</div>
+      <div style="font-size:.76rem;color:var(--text2)">${detail}</div></div></div>`;
+    const out=[];
+    const staffList=Object.entries(this.staff).filter(([i,s])=>s.role!=='admin');
+    // data completeness
+    const files=await API.getAllHRFiles();
+    const fm={};(files||[]).forEach(f=>fm[f.staff_id]=f);
+    const noDob=staffList.filter(([i])=>!fm[i]?.dob).length;
+    const noPhone=staffList.filter(([i,s])=>!(fm[i]?.phone||s.phone)).length;
+    const noEmail=staffList.filter(([i,s])=>!s.email).length;
+    const noContract=staffList.filter(([i,s])=>!s.contractEnd).length;
+    out.push(line(noEmail===0,'Email addresses',noEmail===0?'All staff have an email on file.':noEmail+' staff have no email — they cannot receive notifications.'));
+    out.push(line(noPhone===0,'Phone numbers',noPhone===0?'All staff have a phone number.':noPhone+' staff have no phone — SMS cannot reach them.'));
+    out.push(line(noDob===0,'Dates of birth',noDob===0?'All staff files have a date of birth.':noDob+' missing — birthday greetings will skip them.'));
+    out.push(line(noContract===0,'Contract dates',noContract===0?'All staff have a contract end date.':noContract+' have no contract end date.'));
+    // duplicate emails would misdirect payslips
+    const byEmail={};staffList.forEach(([i,s])=>{if(s.email){const e=s.email.toLowerCase();(byEmail[e]=byEmail[e]||[]).push(s.name);}});
+    const dup=Object.entries(byEmail).filter(([e,n])=>n.length>1);
+    out.push(line(dup.length===0,'Duplicate email addresses',dup.length===0?'No two staff share an address.'
+      :dup.map(([e,n])=>e+' → '+n.join(' & ')).join('; ')+' — payslips would be misdirected.'));
+    // backup mirror
+    const jr=await API._get('job_runs','select=run_at&order=run_at.desc&limit=1')||[];
+    const last=jr[0]?.run_at;
+    const ageH=last?Math.round((Date.now()-new Date(last))/3600000):null;
+    out.push(line(ageH!==null&&ageH<36,'Scheduled jobs',last?('Last automated job ran '+new Date(last).toLocaleString('en-GB')+(ageH>36?' — that is over a day ago.':'')):'No automated job has run yet.'));
+    // payroll state
+    try{
+      const runs=await API.secureGet('payroll_runs','select=month,status&order=month.desc&limit=3')||[];
+      out.push(line(true,'Payroll',runs.length?runs.map(r=>r.month+': '+r.status).join(' · '):'No payroll run recorded yet.'));
+    }catch(e){out.push(line(null,'Payroll','Not available to this account.'));}
+    // sessions
+    const sess=await API._get('sessions','select=id&limit=200')||[];
+    out.push(line(true,'Active sessions',sess.length+' session(s) on record.'));
+    out.push(line(true,'Staff on record',staffList.length+' active staff, '+Object.keys(this.staff).length+' records in total.'));
+    el.innerHTML=out.join('');
+  }
+
+  /* ── Deactivate instead of delete ── */
+  async toggleStaffActive(id){
+    const s=this.staff[id];if(!s)return;
+    const isActive=s.active!==false;
+    if(isActive){
+      if(!confirm('Deactivate '+s.name+'?\n\nThey will no longer be able to sign in or clock in, but all their\nrecords, leave history and appraisals are kept.'))return;
+      const reason=prompt('Reason for leaving (resignation, end of contract, etc.)');
+      if(reason===null)return;
+      const r=await API._update('staff','id=eq.'+encodeURIComponent(id),
+        {active:false,exit_date:new Date().toISOString().slice(0,10),exit_reason:String(reason||'').trim()});
+      if(r===null)return toast('Failed: '+(API.lastError||''),'err');
+      s.active=false;this._cacheS();
+      this.audit('Staff deactivated','Staff',s.name,String(reason||''));
+      toast(s.name+' deactivated — records kept');
+    } else {
+      if(!confirm('Reactivate '+s.name+'?\n\nThey will be able to sign in and clock in again.'))return;
+      const r=await API._update('staff','id=eq.'+encodeURIComponent(id),{active:true,exit_date:null,exit_reason:''});
+      if(r===null)return toast('Failed: '+(API.lastError||''),'err');
+      s.active=true;this._cacheS();
+      this.audit('Staff reactivated','Staff',s.name,'');
+      toast(s.name+' reactivated');
+    }
+    this._renderStaffGrid();
+  }
+
+  /* ═══════════════════════════════════════════
+     GRANTS REGISTER — Finance (Ernest) + Country Leader
+  ═══════════════════════════════════════════ */
+  /* Grants use dd-mm-yyyy, per the Grant Register */
+  _grDate(v){
+    if(!v)return '—';
+    const d=new Date(String(v).slice(0,10));
+    if(isNaN(d))return String(v);
+    const p=n=>String(n).padStart(2,'0');
+    return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear();
+  }
+  _grantFlag(endDate){
+    if(!endDate)return{cls:'none',label:'No end date',days:null,months:null};
+    const end=new Date(String(endDate).slice(0,10));
+    if(isNaN(end))return{cls:'none',label:'Invalid date',days:null,months:null};
+    const now=new Date();now.setHours(0,0,0,0);
+    const days=Math.round((end-now)/86400000);
+    const months=(days/30.44).toFixed(1);
+    if(days<0)return{cls:'red',label:'⚠ Ended '+Math.abs(days)+'d ago',days,months};
+    if(days<=90)return{cls:'red',label:'🔴 '+days+' days left',days,months};
+    if(days<=180)return{cls:'amber',label:'🟠 '+days+' days left',days,months};
+    return{cls:'green',label:'🟢 '+months+' months left',days,months};
+  }
+  async renderGrants(){
+    const body=$('gr-body');if(!body)return;
+    body.innerHTML='<tr><td colspan="8" style="color:var(--text3)">Loading…</td></tr>';
+    let rows=await API._get('grants','order=end_date.asc.nullslast&limit=300')||[];
+    this._grants=rows;
+    const q=($('gr-search')?.value||'').trim().toLowerCase();
+    const st=$('gr-status')?.value||'';
+    let list=rows;
+    if(q)list=list.filter(g=>(g.name||'').toLowerCase().includes(q)||String(g.id).includes(q));
+    if(st)list=list.filter(g=>(g.status||'Active')===st);
+    // summary across ALL grants, not just the filtered view
+    const sm=$('gr-summary');
+    if(sm){
+      let red=0,amber=0,green=0;
+      rows.forEach(g=>{const f=this._grantFlag(g.end_date);
+        if(f.cls==='red')red++;else if(f.cls==='amber')amber++;else if(f.cls==='green')green++;});
+      const box=(n,l,c,ic)=>`<div class="cs-box"><div style="font-size:1.05rem;line-height:1">${ic}</div><div class="cs-num" style="color:${c}">${n}</div><div class="cs-lbl">${l}</div></div>`;
+      sm.innerHTML=box(rows.length,'Total Grants','','🎗')
+        +box(red,'Ending ≤90 days','#dc2626','🔴')
+        +box(amber,'Ending ≤180 days','#d97706','🟠')
+        +box(green,'Running','#16a34a','🟢');
+    }
+    if(!list.length){body.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-ico">🎗</div>No grants found</div></td></tr>';return;}
+    body.innerHTML=list.map(g=>{
+      const f=this._grantFlag(g.end_date);
+      return `<tr><td style="font-weight:600">${g.id}</td>
+        <td>${g.name||''}${g.amount>0?`<br><span style="font-size:.7rem;color:var(--text3)">${g.currency||''} ${(+g.amount).toLocaleString()}</span>`:''}</td>
+        <td style="font-size:.78rem">${g.pc_local||'—'}</td>
+        <td style="font-size:.78rem">${this._grDate(g.start_date)}</td>
+        <td style="font-size:.78rem;font-weight:600">${this._grDate(g.end_date)}</td>
+        <td style="font-size:.78rem">${f.months!==null&&f.days>=0?f.months:'—'}</td>
+        <td><span class="c-flag ${f.cls}">${f.label}</span></td>
+        <td><button class="bsm bsm-navy" onclick="APP.openGrantModal('${g.id}')">✏</button></td></tr>`;
+    }).join('');
+  }
+  openGrantModal(id){
+    const g=id?(this._grants||[]).find(x=>String(x.id)===String(id)):null;
+    $('gr-edit-id').value=g?.id||'';
+    $('gr-id').value=g?.id||'';
+    $('gr-id').readOnly=!!g;
+    $('gr-name').value=g?.name||'';
+    $('gr-pc').value=g?.pc_local||'US';
+    $('gr-start').value=g?.start_date?String(g.start_date).slice(0,10):'';
+    $('gr-end').value=g?.end_date?String(g.end_date).slice(0,10):'';
+    $('gr-amount').value=g?.amount||'';
+    $('gr-curr').value=g?.currency||'USD';
+    $('gr-st').value=g?.status||'Active';
+    $('gr-focal').value=g?.focal_person||'';
+    $('gr-notes').value=g?.notes||'';
+    $('gr-msg').textContent='';
+    $('grant-modal').classList.add('open');
+  }
+  async saveGrant(){
+    const id=$('gr-id').value.trim(),name=$('gr-name').value.trim();
+    if(!id)return $('gr-msg').innerHTML='<span style="color:var(--red)">Grant ID is required.</span>';
+    if(!name)return $('gr-msg').innerHTML='<span style="color:var(--red)">Grant name is required.</span>';
+    const start=$('gr-start').value,end=$('gr-end').value;
+    if(start&&end&&end<start)return $('gr-msg').innerHTML='<span style="color:var(--red)">End date is before start date.</span>';
+    let months=null;
+    if(start&&end)months=Math.round((new Date(end)-new Date(start))/86400000/30.44);
+    $('gr-msg').innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
+    const r=await API._upsert('grants',[{id,name,pc_local:$('gr-pc').value,
+      start_date:start||null,end_date:end||null,months_active:months,
+      amount:+$('gr-amount').value||0,currency:$('gr-curr').value,status:$('gr-st').value,
+      focal_person:$('gr-focal').value.trim(),notes:$('gr-notes').value.trim(),
+      updated_at:new Date().toISOString()}]);
+    if(r){this.audit('Grant saved','Payroll',name,id+' · ends '+(end||'—'));
+      closeModal('grant-modal');toast('Grant saved ✓');this.renderGrants();}
+    else $('gr-msg').innerHTML='<span style="color:var(--red)">Save failed: '+(API.lastError||'')+'</span>';
+  }
+  exportGrants(){
+    const rows=this._grants||[];
+    if(!rows.length)return toast('Nothing to export','err');
+    let csv='Grant ID,Grant Name / Funding Source,PC/Local,Start (dd-mm-yyyy),End (dd-mm-yyyy),Months Left,Amount,Currency,Status,Focal Person\n';
+    rows.forEach(g=>{const f=this._grantFlag(g.end_date);
+      csv+=`"${g.id}","${(g.name||'').replace(/"/g,'""')}","${g.pc_local||''}","${this._grDate(g.start_date)}","${this._grDate(g.end_date)}","${f.months??''}",${g.amount||0},"${g.currency||''}","${g.status||''}","${g.focal_person||''}"\n`;});
+    this._dl(csv,'THP_Grants_'+Date.now()+'.csv','text/csv');
   }
 
   /* ═══════════════════════════════════════════
@@ -4686,11 +6033,14 @@ const APP=new App();
     if(role==='admin'){
       showView('admin-view');
       setTimeout(()=>{
+        try{
         APP.renderAdmin();APP._renderDash();APP._renderStaffGrid();APP._renderReports();APP.renderAdminLeave();APP._updateNotifBadges();
         APP._populateSupervisorDropdown();APP._initEntQR();APP.renderAdminHolidays();
         APP._checkContractReminders();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
-        hideLoader();
+        
+      }catch(e){console.error('Dashboard setup error:',e);toast('Some parts of the dashboard did not load. Refresh to try again.','err');}
+        finally{hideLoader();}
       },100);
       API.updateChips();
       return;
@@ -4699,6 +6049,7 @@ const APP=new App();
     if(isManagerRole(role)){
       showView('manager-view');
       setTimeout(()=>{
+        try{
         if($('m-unit-display'))$('m-unit-display').textContent=APP.user.unit;
         APP._toggleMgrReports(id);APP._setLeaveTabLabel(id);
         if($('mgr-name'))$('mgr-name').textContent=APP.user.name;
@@ -4709,13 +6060,17 @@ const APP=new App();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
-        APP._applyPrivileges(id);APP._checkContractReminders();
+        if(typeof APP!=='undefined'&&APP._applyPrivileges)APP._applyPrivileges(id);
+        if(typeof APP!=='undefined'&&APP._checkContractReminders)APP._checkContractReminders();
         APP._startAutoClockOut();APP._checkClockInReminder();
-        hideLoader();
+        
+      }catch(e){console.error('Dashboard setup error:',e);toast('Some parts of the dashboard did not load. Refresh to try again.','err');}
+        finally{hideLoader();}
       },100);
     } else {
       showView('staff-view');
       setTimeout(()=>{
+        try{
         $('st-name').textContent=APP.user.name;
         const av=$('st-av');if(av){av.textContent=ini(APP.user.name);av.style.background=APP.user.color||avColor(APP.user.name);}
         const mav=$('mob-st-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
@@ -4726,7 +6081,9 @@ const APP=new App();
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
         APP._startAutoClockOut();APP._checkClockInReminder();
-        hideLoader();
+        
+      }catch(e){console.error('Dashboard setup error:',e);toast('Some parts of the dashboard did not load. Refresh to try again.','err');}
+        finally{hideLoader();}
       },100);
     }
     API.updateChips();
