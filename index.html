@@ -305,13 +305,14 @@
             <input class="fi" type="month" id="st-pay-month" style="width:150px" onchange="APP.renderPayroll('st-')">
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('st-')">🔄 Recalculate</button>
             <button class="bsm bsm-navy" onclick="APP.savePayrollRun('st-')">💾 Save Draft</button>
-            <button class="bsm" id="st-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('st-')">📤 Submit for Approval</button>
+            <button class="bsm" id="st-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('st-')">📤 Submit for Review</button>
+            <button class="bsm" id="st-pay-forward" style="background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;display:none" onclick="APP.forwardPayrollRun('st-')">➡ Reviewed — Forward</button>
             <button class="bsm" id="st-pay-approve" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff;display:none" onclick="APP.approvePayrollRun('st-')">✅ Approve</button>
             <button class="bsm" id="st-pay-return" style="background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;display:none" onclick="APP.returnPayrollRun('st-')">↩ Return</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('st-')">📊 CSV</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('st-')">🏛 Statutory</button>
             <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('st-')" title="Opens every calculated payslip, one per page, ready to print or save">🧾 Preview All Payslips</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('st-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" id="st-pay-release" onclick="APP.emailPayslips('st-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('st-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="st-pay-status" style="padding:.6rem 1.3rem;font-size:.8rem;display:none;border-bottom:1px solid var(--border)"></div>
@@ -906,13 +907,14 @@
             <input class="fi" type="month" id="m-pay-month" style="width:150px" onchange="APP.renderPayroll('m-')">
             <button class="bsm bsm-teal" onclick="APP.renderPayroll('m-')">🔄 Recalculate</button>
             <button class="bsm bsm-navy" onclick="APP.savePayrollRun('m-')">💾 Save Draft</button>
-            <button class="bsm" id="m-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('m-')">📤 Submit for Approval</button>
+            <button class="bsm" id="m-pay-submit" style="background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;display:none" onclick="APP.submitPayrollRun('m-')">📤 Submit for Review</button>
+            <button class="bsm" id="m-pay-forward" style="background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;display:none" onclick="APP.forwardPayrollRun('m-')">➡ Reviewed — Forward</button>
             <button class="bsm" id="m-pay-approve" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff;display:none" onclick="APP.approvePayrollRun('m-')">✅ Approve</button>
             <button class="bsm" id="m-pay-return" style="background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;display:none" onclick="APP.returnPayrollRun('m-')">↩ Return</button>
             <button class="bsm bsm-gold" onclick="APP.exportPayrollCSV('m-')">📊 CSV</button>
             <button class="bsm" style="background:linear-gradient(135deg,#7c2d12,#c2410c);color:#fff" onclick="APP.exportStatutory('m-')">🏛 Statutory</button>
             <button class="bsm" style="background:linear-gradient(135deg,#334155,#475569);color:#fff" onclick="APP.previewPayslip('m-')" title="Opens every calculated payslip, one per page, ready to print or save">🧾 Preview All Payslips</button>
-            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" onclick="APP.emailPayslips('m-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
+            <button class="bsm" style="background:linear-gradient(135deg,#166534,#16a34a);color:#fff" id="m-pay-release" onclick="APP.emailPayslips('m-')" title="Publishes payslips to each staff member's portal and sends them an email notification">📢 Release Payslips</button>
             <button class="bsm bsm-gold" onclick="APP.printSection('m-payroll','Payroll Run')">🖨 Print</button>
           </div></div>
           <div id="m-pay-status" style="padding:.6rem 1.3rem;font-size:.8rem;display:none;border-bottom:1px solid var(--border)"></div>
