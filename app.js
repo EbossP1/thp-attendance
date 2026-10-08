@@ -271,8 +271,13 @@ const API={
   setGasUrl(url){localStorage.setItem(GAS_URL_KEY,url);},
   async gasPost(payload){
     const url=this.getGasUrl();if(!url)return null;
+    // Apps Script rejects every request (except password reset) that
+    // does not carry a valid session — see _authGate in Code.gs.
+    const body={...payload};
+    const sess=getSession();
+    if(sess){body._authId=sess.id;body._authToken=sess.token;}
     try{
-      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload),redirect:'follow'});
+      const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});
       if(!r.ok)return null;return JSON.parse(await r.text());
     }catch(e){console.warn('GAS POST:',e);return null;}
   },
@@ -285,73 +290,42 @@ const API={
   },
 
   /* ═══════════════════════════════════════════
-     AUTH — Supabase sessions table
+     AUTH — server-side database functions
+     Passwords live in staff_credentials, which the browser cannot
+     read. Checking a password, creating a session and validating
+     it all happen inside Postgres (see THP_login_security.sql).
   ═══════════════════════════════════════════ */
-  async login(id,pass){
-    if(!id||!pass)return{success:false,error:'Missing credentials'};
+  async _rpc(fn,args){return this._supa('rpc/'+fn,{method:'POST',body:JSON.stringify(args||{})});},
 
-    // Admin login
-    if(id==='ADMIN01'){
-      const settings=await this._get('settings','key=eq.admin_password');
-      const adminPass=(settings&&settings[0])?settings[0].value:'admin123';
-      if(String(pass)!==String(adminPass)){this.logLogin('ADMIN01','Administrator','failed','Incorrect password');return{success:false,error:'Incorrect password'};}
-      this.logLogin('ADMIN01','Administrator','success','');
-      const token=this._genToken();
-      await this._cleanSessions(id);
-      await this._insert('sessions',{staff_id:id,token,expires_at:new Date(Date.now()+12*3600000).toISOString()});
-      return{success:true,user:{id:'ADMIN01',name:'Administrator',role:'admin'},token};
-    }
-
-    // Staff login
-    const rows=await this._get('staff','id=eq.'+encodeURIComponent(id));
-    if(!rows||!rows.length){this.logLogin(id,'','failed','Staff ID not found');return{success:false,error:'Staff ID not found'};}
-    const s=rows[0];
-    if(s.active===false){
-      this.logLogin(id,s.name,'locked','Account deactivated');
-      return{success:false,error:'This account has been deactivated. Please contact the Administrator.'};
-    }
-    if(String(s.password)!==String(pass)){this.logLogin(id,s.name,'failed','Incorrect password');return{success:false,error:'Incorrect password'};}
-    this.logLogin(id,s.name,'success','');
-    const token=this._genToken();
-    await this._cleanSessions(id);
-    await this._insert('sessions',{staff_id:id,token,expires_at:new Date(Date.now()+12*3600000).toISOString()});
-    return{
-      success:true,token,
-      user:{id:s.id,name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',
-        color:s.avatar_color||'',email:s.email||'',gender:s.gender||'male',
-        supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||''}
-    };
-  },
-
-  async logLogin(staffId,name,outcome,reason){
-    try{
-      await this._insert('login_log',{id:'LG'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-        staff_id:staffId||'',name:name||'',outcome:outcome||'success',reason:reason||'',
-        created_at:new Date().toISOString()});
-    }catch(e){}
+  async login(id,passCandidates){
+    const cands=(Array.isArray(passCandidates)?passCandidates:[passCandidates]).filter(Boolean).map(String);
+    if(!id||!cands.length)return{success:false,error:'Missing credentials'};
+    const r=await this._rpc('app_login',{p_id:id,p_candidates:cands});
+    return r||null;                                   // null = network / server error
   },
   async validateSession(id,token){
     if(!id||!token)return{success:false,error:'No session'};
-    const rows=await this._get('sessions','staff_id=eq.'+encodeURIComponent(id)+'&token=eq.'+encodeURIComponent(token));
-    if(!rows||!rows.length)return{success:false,error:'Invalid session'};
-    const sess=rows[0];
-    if(new Date(sess.expires_at)<new Date())return{success:false,error:'Session expired'};
-    if(id==='ADMIN01')return{success:true,user:{id:'ADMIN01',name:'Administrator',role:'admin'}};
-    const staff=await this._get('staff','id=eq.'+encodeURIComponent(id));
-    if(!staff||!staff.length)return{success:false,error:'Staff not found'};
-    const s=staff[0];
-    return{success:true,user:{id:s.id,name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',
-      color:s.avatar_color||'',email:s.email||'',gender:s.gender||'male',
-      supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||''}};
+    const r=await this._rpc('app_validate',{p_id:id,p_token:token});
+    return r||{success:false,error:'Could not verify session'};
   },
-
   async logout(id,token){
-    if(id)await this._cleanSessions(id);
+    if(id&&token)await this._rpc('app_logout',{p_id:id,p_token:token});
     clearSession();return{success:true};
   },
-
-  async _cleanSessions(id){await this._delete('sessions','staff_id=eq.'+encodeURIComponent(id));},
-  _genToken(){let t='';for(let i=0;i<32;i++)t+=Math.floor(Math.random()*256).toString(16);return t+Date.now().toString(36);},
+  /* Admin-only session tools (Security tab, System Health) */
+  async adminSessions(){
+    const s=getSession();if(!s)return null;
+    return this._rpc('app_admin_sessions',{p_admin:s.id,p_token:s.token});
+  },
+  async adminEndSessions(sessionId){
+    const s=getSession();if(!s)return null;
+    return this._rpc('app_admin_end_sessions',{p_admin:s.id,p_token:s.token,p_session_id:sessionId||null});
+  },
+  async adminSetPassword(targetId,newPass){
+    const s=getSession();if(!s)return{success:false,error:'Not signed in'};
+    const r=await this._rpc('app_admin_set_password',{p_admin:s.id,p_token:s.token,p_target:targetId,p_new:newPass});
+    return r||{success:false,error:API.lastError||'Server error'};
+  },
 
   /* ═══════════════════════════════════════════
      ATTENDANCE — Supabase attendance table
@@ -390,7 +364,7 @@ const API={
   async saveStaff(id,data){
     const r=await this._upsert('staff',[{
       id,name:data.name,unit:(data.unit||'').trim(),role:data.role||'staff',
-      password:data.pass,avatar_color:data.color||'',email:data.email||'',
+      avatar_color:data.color||'',email:data.email||'',
       gender:data.gender||'male',supervisor:data.supervisor||'',
       phone:data.phone||'',emergency_contact:data.emergencyContact||'',
       contract_start:data.contractStart||null,contract_end:data.contractEnd||null
@@ -510,46 +484,24 @@ const API={
   },
 
   /* ═══════════════════════════════════════════
-     PASSWORD — Supabase staff.password
+     PASSWORD — server-side, via app_change_password
   ═══════════════════════════════════════════ */
-  async changePassword(id,oldPass,newPass,token){
-    if(id==='ADMIN01'){
-      const settings=await this._get('settings','key=eq.admin_password');
-      const adminPass=(settings&&settings[0])?settings[0].value:'admin123';
-      if(String(oldPass)!==String(adminPass))return{success:false,error:'Incorrect current password'};
-      await this._upsert('settings',[{key:'admin_password',value:newPass,updated_at:new Date().toISOString()}]);
-      return{success:true};
-    }
-    const rows=await this._get('staff','id=eq.'+encodeURIComponent(id));
-    if(!rows||!rows.length)return{success:false,error:'Staff not found'};
-    if(String(rows[0].password)!==String(oldPass))return{success:false,error:'Incorrect current password'};
-    await this._update('staff','id=eq.'+encodeURIComponent(id),{password:newPass});
-    return{success:true};
+  async changePassword(id,oldCandidates,newPass){
+    const s=getSession();
+    if(!s||s.id!==id)return{success:false,error:'Your session has expired — sign in again.'};
+    const r=await this._rpc('app_change_password',{p_id:id,p_token:s.token,
+      p_old:(Array.isArray(oldCandidates)?oldCandidates:[oldCandidates]).filter(Boolean).map(String),p_new:newPass});
+    return r||{success:false,error:this.lastError||'Server error'};
   },
 
-  /* ── Forgot Password — generate temp pass, save to Supabase, email via GAS ── */
+  /* ── Forgot Password — Apps Script generates, saves and emails the
+       temporary password. The browser never sees or sets it. ── */
   async resetPassword(staffId){
     if(!staffId)return{success:false,error:'Staff ID required'};
     if(staffId==='ADMIN01')return{success:false,error:'Admin password cannot be reset this way. Contact the system administrator.'};
-    const rows=await this._get('staff','id=eq.'+encodeURIComponent(staffId));
-    if(!rows||!rows.length)return{success:false,error:'Staff ID not found in the system.'};
-    const staff=rows[0];
-    const email=(staff.email||'').trim();
-    if(!email)return{success:false,error:'No email registered for this account. Please contact the Administrator to reset your password.'};
-    // Generate a 6-character temporary password
-    const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    let tempPass='';for(let i=0;i<6;i++)tempPass+=chars[Math.floor(Math.random()*chars.length)];
-    // Save temp password to Supabase (plain text — user will be forced to change on login)
-    await this._update('staff','id=eq.'+encodeURIComponent(staffId),{password:tempPass});
-    // Send email via GAS
-    const emailResult=await this.gasPost({
-      action:'resetPassword',
-      staffId,
-      staffName:staff.name,
-      staffEmail:email,
-      tempPassword:tempPass
-    }).catch(()=>null);
-    return{success:true,email:email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),emailSent:!!emailResult};
+    const r=await this.gasPost({action:'resetPassword',staffId});
+    if(!r)return{success:false,error:'Could not reach the server. Check your connection and try again.'};
+    return r;
   },
 
   /* ═══════════════════════════════════════════
@@ -671,7 +623,7 @@ const API={
     // Transform staff rows to {id: {name,unit,...}} format
     const staff={};
     (staffRows||[]).forEach(s=>{
-      staff[s.id]={name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',pass:s.password,
+      staff[s.id]={name:s.name,unit:(s.unit||'').trim(),role:s.role||'staff',
         color:s.avatar_color||'',email:s.email||'',gender:s.gender||'male',
         supervisor:s.supervisor||'',phone:s.phone||'',emergencyContact:s.emergency_contact||'',
         contractStart:s.contract_start||'',contractEnd:s.contract_end||'',
@@ -955,6 +907,7 @@ class App{
     /* Load from cache (server will overwrite on login/hydrate) */
     this.records=JSON.parse(localStorage.getItem('thp_recs'))||[];
     this.staff=JSON.parse(localStorage.getItem('thp_staff')||'{}');
+    Object.values(this.staff).forEach(x=>{if(x)delete x.pass;});   // older builds cached passwords
     this.leave=JSON.parse(localStorage.getItem('thp_leave'))||[];
     this.holidays=JSON.parse(localStorage.getItem('thp_holidays'))||[];
     this.user=null;this.qrSid=null;this.HOURS=8;
@@ -990,17 +943,10 @@ class App{
     };t();setInterval(t,1000);
   }
   _qrParam(){
-    const sid=new URLSearchParams(window.location.search).get('staff');
-    if(sid){this.qrSid=sid;
-      // Hydrate staff data for QR landing
-      API.get('getStaff').then(r=>{
-        if(r&&r.staff&&r.staff[sid]){
-          this.staff=r.staff;this._cacheS();
-          $('qr-greet').textContent='Hello, '+r.staff[sid].name+'!';
-          showView('qr-landing-view');
-        }
-      });
-    }
+    /* The QR landing page was retired (it let anyone clock in for anyone).
+       A ?staff= link now simply opens the normal sign-in page. */
+    if(new URLSearchParams(window.location.search).has('staff'))
+      history.replaceState(null,'',window.location.pathname);
   }
 
   /* ── QR clock ── */
@@ -1056,37 +1002,23 @@ class App{
 
     if(btn){btn.classList.add('loading');btn.querySelector('span').textContent='Signing in…';}
 
-    /* ── Hash the password before sending (server stores hashed passwords) ── */
+    /* One server call: the stored password may be plain (default/temp)
+       or hashed (changed), so both are checked against a single lookup. */
     const hashed=await hashPass(id,pass);
-
-    /* ── Call server login ── */
-    const result=await API.login(id, hashed);
+    const result=await API.login(id,[pass,hashed]);
 
     if(btn){btn.classList.remove('loading');btn.querySelector('span').textContent='Sign In';}
 
     if(!result){
-      /* Network error — try plain password as fallback for first-time/default passwords */
-      const fallback=await API.login(id, pass);
-      if(!fallback||!fallback.success){
-        this._loginAttempts[id].push(Date.now());
-        setErr('Could not reach server. Check your connection.');return;
-      }
-      // Server accepted plain password — hash and update
-      this._afterLogin(fallback, id, pass);
+      this._loginAttempts[id].push(Date.now());
+      setErr(navigator.onLine?'Sign-in service unavailable — please try again shortly.':'No internet connection. Check your network.');
+      if(API.lastError)console.warn('Login error:',API.lastError);
       return;
     }
-
     if(!result.success){
-      /* Server rejected — try with plain password (legacy/default passwords) */
-      const fallback=await API.login(id, pass);
-      if(fallback&&fallback.success){
-        this._afterLogin(fallback, id, pass);
-        return;
-      }
       this._loginAttempts[id].push(Date.now());
       setErr(result.error||'Incorrect password.');return;
     }
-
     this._afterLogin(result, id, pass);
   }
 
@@ -1122,7 +1054,7 @@ class App{
     if(role==='admin'){
       showView('admin-view');
       setTimeout(()=>{
-        this.renderAdmin();this._renderDash();this._renderStaffGrid();this._renderReports();this.renderAdminLeave();this._updateNotifBadges();
+        this._renderDash();this._renderStaffGrid();this._renderReports();this.renderAdminLeave();this._updateNotifBadges();
         this._populateSupervisorDropdown();this._initEntQR();this.renderAdminHolidays();
         this._checkContractReminders();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
@@ -1141,7 +1073,7 @@ class App{
         const av=$('mgr-av');if(av){av.textContent=ini(this.user.name);av.style.background=this.user.color||avColor(this.user.name);}
         const mav=$('mob-mgr-av');if(mav){mav.textContent=ini(this.user.name);mav.style.background=this.user.color||avColor(this.user.name);}
         const mn=$('mob-mgr-name');if(mn)mn.textContent=this.user.name;
-        this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrRecs();this.loadLeave();this._updateNotifBadges();
+        this._sessCheck();this._initWorkModeListeners();this._stats();this._renderMgrDash();this.renderMgrLeave();this._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=this.user.name;
         if($('mgr-role'))$('mgr-role').textContent=roleLabel(this.user.role);
         this._checkDefaultPass('mgr');this._renderProfileForm('m-');this._renderMgrLeaveBal();
@@ -1160,8 +1092,7 @@ class App{
         const mn=$('mob-st-name');if(mn)mn.textContent=this.user.name;
         this._stats();this.renderStaffLogs();this._staffQR();this._sessCheck();this._initWorkModeListeners();this._renderLeaveBal();this.renderStaffLeave();this._initLeaveForm();this._updateNotifBadges();
         this.renderStaffFeed();this.checkBirthdayWish();
-        this.renderMyPayslips();
-        (this._applyPrivileges?this:APP)._applyPrivileges(id);
+        this._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=this.user.unit;
         this._filterLeaveByGender();this._checkDefaultPass('');this._renderProfileForm('');
         this._startAutoClockOut();this._checkClockInReminder();
@@ -1228,13 +1159,7 @@ class App{
     if(np!==conf){msg.innerHTML='<span style="color:var(--red)">Passwords don\'t match.</span>';return;}
     if(np===old){msg.innerHTML='<span style="color:var(--red)">Must be different.</span>';return;}
     msg.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
-    const session=getSession();
-    /* Try plain text first, then hashed — server may store either */
-    let r=await API.changePassword(ADMIN_ID,old,np,session?.token);
-    if(!r||!r.success){
-      const oldHashed=await hashPass(ADMIN_ID,old);
-      r=await API.changePassword(ADMIN_ID,oldHashed,np,session?.token);
-    }
+    const r=await API.changePassword(ADMIN_ID,[old,await hashPass(ADMIN_ID,old)],await hashPass(ADMIN_ID,np));
     if(r&&r.success){
       msg.innerHTML='<span style="color:var(--green)">✓ Admin password updated.</span>';
       $('a-chpw-old').value='';$('a-chpw-new').value='';$('a-chpw-confirm').value='';
@@ -2132,10 +2057,12 @@ class App{
     if(pass.length<4)return toast('Min 4 char password','err');
     const color=avColor(name);
     const phoneVal=$('ns-phone')?.value.trim()||'';
-    const staffData={name,unit,role,pass,color,email,gender,supervisor,phone:phoneVal};
-    /* SERVER FIRST */
+    const staffData={name,unit,role,color,email,gender,supervisor,phone:phoneVal};
+    /* SERVER FIRST — profile, then the password (stored server-side only) */
     const r=await API.saveStaff(id,staffData);
     if(!r||!r.success){toast('Server error','err');return;}
+    const pw=await API.adminSetPassword(id,await hashPass(id,pass));
+    if(!pw||!pw.success)toast('Staff saved, but the password was not set: '+(pw?.error||'server error')+'. Use 🔑 Reset.','err');
     this.staff[id]=staffData;this._cacheS();this._renderStaffGrid();this._populateSupervisorDropdown();
     ['ns-id','ns-nm','ns-pw','ns-email','ns-phone'].forEach(i=>{if($(i))$(i).value='';});
     this.audit('Staff created','Staff',name,id+' · '+unit);
@@ -2182,22 +2109,18 @@ class App{
     if(newPass===null)return;
     const plainPass=newPass.trim()||'1234';
     if(plainPass.length<4)return toast('Min 4 characters','err');
-    const hashed=await hashPass(id,plainPass);
-    const oldStored=s.pass;
-    const r=await API.changePassword(id,oldStored,hashed);
-    if(r&&r.success){
-      s.pass=hashed;this._cacheS();this._renderStaffGrid();
-      toast(`Password reset for ${s.name} ☁️`);
-    } else {toast('Reset failed','err');}
+    const r=await API.adminSetPassword(id,await hashPass(id,plainPass));
+    if(!r||!r.success)return toast('Reset failed: '+(r?.error||'server error'),'err');
+    this.audit('Password reset by admin','Security',s.name,id);
+    toast(`Password reset for ${s.name} ☁️`);
     toast(`Tell ${s.name.split(' ')[0]}: new password is ${plainPass}`,'info');
   }
 
   _checkDefaultPass(prefix){
     const notice=$(prefix==='mgr'?'m-chpw-first-notice':'chpw-first-notice');
     if(!notice)return;
-    const stored=this.staff[this.user.id]?.pass||'';
-    // Show notice if password is still default plain text (not yet changed to a hash)
-    const isDefault=!isHashed(stored)||stored==='1234';
+    const raw=this._loginRawPass||'';
+    const isDefault=raw==='1234'||/^[A-Z0-9]{6}$/.test(raw);
     notice.style.display=isDefault?'flex':'none';
   }
 
@@ -2257,21 +2180,9 @@ class App{
     const newHashed=await hashPass(uid,newPass);
     msgEl.innerHTML='<span style="color:var(--teal)">⏳ Saving…</span>';
 
-    /* Send the plain-text old password directly to the server.
-       The server stores passwords as plain text (e.g. "1234") and
-       compares with String() coercion, so this always works. */
-    const session=getSession();
-    let r=await API.changePassword(uid,oldPass,newHashed,session?.token);
-
-    /* If that failed, try with the hashed version of old password
-       (in case password was previously migrated to a hash) */
-    if(!r||!r.success){
-      const oldHashed=await hashPass(uid,oldPass);
-      r=await API.changePassword(uid,oldHashed,newHashed,session?.token);
-    }
+    const r=await API.changePassword(uid,[oldPass,await hashPass(uid,oldPass)],newHashed);
 
     if(r&&r.success){
-      this.staff[uid].pass=newHashed;this._cacheS();
       this._loginRawPass=null; // clear
       $(pfx+'old').value='';$(pfx+'new').value='';$(pfx+'confirm').value='';
       this._checkDefaultPass(ctx);
@@ -3155,7 +3066,6 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     _restoreNavGroups();_hideEmptyNavGroups();
     setTimeout(()=>{_restoreNavGroups();_hideEmptyNavGroups();},200);
     this.refreshActionBadges();
-    if(document.getElementById('m-slip-body'))this.renderMyPayslips('m-');
     if(document.getElementById('m-torate-body')&&this.user?.role!=='staff')this.renderToRate();
     setTimeout(()=>this.showFirstLoginHint(),900);
   }
@@ -5588,7 +5498,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const sb=$('sec-sess-body'),lb=$('sec-log-body');
     if(sb)sb.innerHTML='<tr><td colspan="4" style="color:var(--text3)">Loading…</td></tr>';
     const [sess,log]=await Promise.all([
-      API._get('sessions','select=id,staff_id,expires_at,created_at&order=created_at.desc&limit=100'),
+      API.adminSessions(),
       API._get('login_log','select=*&order=created_at.desc&limit=100')
     ]);
     const now=new Date();
@@ -5611,7 +5521,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   async endSession(sid,staffId){
     if(!confirm('Sign out '+(this._sName(staffId)||staffId)+'?\nThey will need to sign in again.'))return;
-    await API._delete('sessions','id=eq.'+encodeURIComponent(sid));
+    await API.adminEndSessions(String(sid));
     this.audit('Session ended by admin','Security',this._sName(staffId)||staffId,'');
     toast('Signed out');this.renderSecurity();
   }
@@ -5619,7 +5529,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!confirm('Sign EVERYONE out, including yourself?\n\nAll staff will need to sign in again.'))return;
     const t=prompt('Type SIGNOUT to confirm.');
     if(String(t||'').trim().toUpperCase()!=='SIGNOUT')return toast('Cancelled','info');
-    await API._delete('sessions','id=neq.__none__');
+    await API.adminEndSessions(null);
     this.audit('All sessions ended','Security','','admin action');
     toast('Everyone signed out');this.renderSecurity();
   }
@@ -5660,7 +5570,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
       out.push(line(true,'Payroll',runs.length?runs.map(r=>r.month+': '+r.status).join(' · '):'No payroll run recorded yet.'));
     }catch(e){out.push(line(null,'Payroll','Not available to this account.'));}
     // sessions
-    const sess=await API._get('sessions','select=id&limit=200')||[];
+    const sess=await API.adminSessions()||[];
     out.push(line(true,'Active sessions',sess.length+' session(s) on record.'));
     out.push(line(true,'Staff on record',staffList.length+' active staff, '+Object.keys(this.staff).length+' records in total.'));
     el.innerHTML=out.join('');
@@ -6081,7 +5991,7 @@ const APP=new App();
       showView('admin-view');
       setTimeout(()=>{
         try{
-        APP.renderAdmin();APP._renderDash();APP._renderStaffGrid();APP._renderReports();APP.renderAdminLeave();APP._updateNotifBadges();
+        APP._renderDash();APP._renderStaffGrid();APP._renderReports();APP.renderAdminLeave();APP._updateNotifBadges();
         APP._populateSupervisorDropdown();APP._initEntQR();APP.renderAdminHolidays();
         APP._checkContractReminders();
         if($('script-url-input')&&API.getGasUrl())$('script-url-input').value=API.getGasUrl();
@@ -6103,7 +6013,7 @@ const APP=new App();
         const av=$('mgr-av');if(av){av.textContent=ini(APP.user.name);av.style.background=APP.user.color||avColor(APP.user.name);}
         const mav=$('mob-mgr-av');if(mav){mav.textContent=ini(APP.user.name);mav.style.background=APP.user.color||avColor(APP.user.name);}
         const mn=$('mob-mgr-name');if(mn)mn.textContent=APP.user.name;
-        APP._sessCheck();APP._initWorkModeListeners();APP._stats();APP._renderMgrDash();APP.renderMgrRecs();APP.loadLeave();APP._updateNotifBadges();
+        APP._sessCheck();APP._initWorkModeListeners();APP._stats();APP._renderMgrDash();APP.renderMgrLeave();APP._updateNotifBadges();
         if($('m-chpw-name'))$('m-chpw-name').textContent=APP.user.name;
         APP._checkDefaultPass('mgr');APP._renderProfileForm('m-');
         if(id===COUNTRY_LEADER_ID){const dn=$('nav-mgr-deleg');if(dn)dn.classList.remove('cl-only-tab');const dm=$('mob-mgr-deleg');if(dm)dm.classList.remove('cl-only-tab');}
@@ -6124,7 +6034,7 @@ const APP=new App();
         const mn=$('mob-st-name');if(mn)mn.textContent=APP.user.name;
         APP._stats();APP.renderStaffLogs();APP._staffQR();APP._sessCheck();APP._initWorkModeListeners();APP._renderLeaveBal();APP.renderStaffLeave();APP._initLeaveForm();APP._updateNotifBadges();
         APP.renderStaffFeed();APP.checkBirthdayWish();
-        (this._applyPrivileges?this:APP)._applyPrivileges(id);
+        APP._applyPrivileges(id);
         if($('unit-display'))$('unit-display').textContent=APP.user.unit;
         APP._filterLeaveByGender();APP._checkDefaultPass('');APP._renderProfileForm('');
         APP._startAutoClockOut();APP._checkClockInReminder();
