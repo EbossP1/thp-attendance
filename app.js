@@ -3101,7 +3101,7 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
 
   /* ── Privileges (admin-assigned access) ── */
-  _privDefaults(){return{hr:[COUNTRY_LEADER_ID,HR_MANAGER_ID],cases:[HR_MANAGER_ID,COUNTRY_LEADER_ID],payroll:['THPG/05/2025','THPG/01/2026-3',COUNTRY_LEADER_ID]};}
+  _privDefaults(){return{hr:[COUNTRY_LEADER_ID,HR_MANAGER_ID],cases:[HR_MANAGER_ID,COUNTRY_LEADER_ID],payroll:['THPG/01/2026-3','THPG/03/2008','THPG/05/2025',COUNTRY_LEADER_ID]};}
   async _fetchPriv(){
     let p={};
     try{const r=await API._get('settings','key=eq.privileges');if(r&&r.length&&r[0].value)p=JSON.parse(r[0].value);}catch(e){}
@@ -4854,8 +4854,14 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
      Draft → Submitted → Approved. Exports and payslips are locked
      until the Country Leader approves. Ernest and Emmanuel prepare
      and submit; Agatha approves or returns. ── */
-  get PAY_PREPARERS(){return['THPG/05/2025','THPG/01/2026-3','ADMIN01'];}
-  get PAY_APPROVERS(){return['THPG/12/2024','ADMIN01'];}
+  /* Payroll chain: Emmanuel prepares and releases → Edna reviews
+     → Ernest reviews → Agatha gives final approval. */
+  get PAY_PREPARERS(){return['THPG/01/2026-3','ADMIN01'];}          // Emmanuel
+  get PAY_HR_REVIEW(){return['THPG/03/2008','ADMIN01'];}            // Edna
+  get PAY_FIN_REVIEW(){return['THPG/05/2025','ADMIN01'];}           // Ernest
+  get PAY_APPROVERS(){return['THPG/12/2024','ADMIN01'];}            // Agatha
+  _canHRReview(){return this.PAY_HR_REVIEW.includes(this.user?.id);}
+  _canFinReview(){return this.PAY_FIN_REVIEW.includes(this.user?.id);}
   _canPrepare(){return this.PAY_PREPARERS.includes(this.user?.id);}
   _canApprove(){return this.PAY_APPROVERS.includes(this.user?.id);}
   _runId(p){return 'RUN-'+($(p+'pay-month').value||new Date().toISOString().slice(0,7));}
@@ -4865,32 +4871,65 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
   }
   async renderPayStatus(p){
     const el=$(p+'pay-status');if(!el)return;
-    const sub0=$(p+'pay-submit'),app0=$(p+'pay-approve'),ret0=$(p+'pay-return');
-    // Hide all three first — only the role-appropriate ones are shown below.
-    [sub0,app0,ret0].forEach(b=>{if(b)b.style.display='none';});
+    const sub=$(p+'pay-submit'),fwd=$(p+'pay-forward'),app=$(p+'pay-approve'),
+          ret=$(p+'pay-return'),rel=$(p+'pay-release');
+    [sub,fwd,app,ret].forEach(b=>{if(b)b.style.display='none';});
     const run=await this._loadRun(p);
     this._curRun=run;
-    const sub=$(p+'pay-submit'),app=$(p+'pay-approve'),ret=$(p+'pay-return');
     const st=run?.status||'None';
     const show=(e,v)=>{if(e)e.style.display=v?'inline-block':'none';};
     if(!run){
       el.style.display='none';
-      show(sub,this._canPrepare());show(app,false);show(ret,false);
+      show(sub,this._canPrepare());
+      if(rel)rel.style.display='none';
+      this._payApproved=false;
       return;
     }
     el.style.display='block';
-    const badge={Draft:'none',Submitted:'amber',Approved:'green',Returned:'red'}[st]||'none';
-    let line=`<span class="c-flag ${badge}">${st}</span>`;
-    if(run.prepared_by)line+=` &nbsp;Prepared by <strong>${run.prepared_by}</strong>`;
-    if(run.submitted_by)line+=` &nbsp;· Submitted by <strong>${run.submitted_by}</strong> ${run.submitted_at?String(run.submitted_at).slice(0,10):''}`;
-    if(run.approved_by)line+=` &nbsp;· Approved by <strong>${run.approved_by}</strong> ${run.approved_at?String(run.approved_at).slice(0,10):''}`;
+    const badge={Draft:'none','HR Review':'amber','Finance Review':'amber',
+      'Pending Approval':'amber',Approved:'green',Returned:'red'}[st]||'none';
+    const stageNote={
+      'Draft':'Prepared by Emmanuel — not yet submitted',
+      'HR Review':'With HR (Edna) for review',
+      'Finance Review':'With Finance (Ernest) for review',
+      'Pending Approval':'Awaiting final approval by the Country Leader',
+      'Approved':'Approved — payslips may now be released',
+      'Returned':'Returned for correction'}[st]||'';
+    let line=`<span class="c-flag ${badge}">${st}</span> &nbsp;<span style="color:var(--text2)">${stageNote}</span>`;
+    if(run.prepared_by)line+=`<br>Prepared by <strong>${run.prepared_by}</strong>`;
+    if(run.submitted_by)line+=` · Submitted by <strong>${run.submitted_by}</strong>`;
+    if(run.approved_by)line+=` · Approved by <strong>${run.approved_by}</strong> ${run.approved_at?String(run.approved_at).slice(0,10):''}`;
     if(run.approver_note)line+=`<br><span style="color:var(--red)">Note: ${run.approver_note}</span>`;
     el.innerHTML=line;
+
     show(sub,this._canPrepare()&&(st==='Draft'||st==='Returned'));
-    show(app,this._canApprove()&&st==='Submitted');
-    show(ret,this._canApprove()&&st==='Submitted');
-    // Lock distribution until approved
+    show(fwd,(this._canHRReview()&&st==='HR Review')||(this._canFinReview()&&st==='Finance Review'));
+    show(app,this._canApprove()&&st==='Pending Approval');
+    show(ret,st!=='Approved'&&st!=='Draft'&&
+      (this._canHRReview()||this._canFinReview()||this._canApprove()));
     this._payApproved=(st==='Approved');
+    // Only the preparer releases payslips, and only once approved
+    if(rel)rel.style.display=(this._payApproved&&this._canPrepare())?'inline-block':'none';
+  }
+  async forwardPayrollRun(p){
+    const month=$(p+'pay-month').value,run=this._curRun;
+    if(!run)return toast('Nothing to forward','err');
+    let next='',who='';
+    if(run.status==='HR Review'&&this._canHRReview()){next='Finance Review';who='Finance (Ernest)';}
+    else if(run.status==='Finance Review'&&this._canFinReview()){next='Pending Approval';who='the Country Leader';}
+    else return toast('This run is not at your review stage','err');
+    if(!confirm('Confirm you have reviewed the payroll for '+month+' and forward it to '+who+'?'))return;
+    const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,status:next,
+      approver_note:'',updated_at:new Date().toISOString()}]);
+    if(!r)return toast('Failed — '+(API.lastError||'unknown'),'err');
+    this.audit('Payroll reviewed and forwarded','Payroll',month,run.status+' → '+next);
+    const nextId=next==='Finance Review'?'THPG/05/2025':COUNTRY_LEADER_ID;
+    const st=this.staff[nextId];
+    if(st?.email)API.gasPost({action:'payrollNotify',stage:'submitted',month,to:st.email,
+      toName:st.name,by:this.user.name,staffCount:(this._payCalc||[]).length,
+      net:((this._payTotals&&this._payTotals().net)||0).toFixed(2)}).catch(()=>{});
+    toast('Forwarded to '+who+' ✓');
+    this.renderPayStatus(p);
   }
   _requireApproval(){
     if(this._payApproved)return true;
@@ -4903,7 +4942,8 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     const month=$(p+'pay-month').value||new Date().toISOString().slice(0,7);
     const cur=await this._loadRun(p);
     if(cur&&cur.status==='Approved')return toast('This run is already approved and cannot be changed','err');
-    if(cur&&cur.status==='Submitted')return toast('This run is awaiting approval — it cannot be edited','err');
+    if(cur&&['HR Review','Finance Review','Pending Approval'].includes(cur.status))
+      return toast('This run is under review — it cannot be edited','err');
     const tot=this._payTotals();
     const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
       data:JSON.stringify(this._payCalc),totals:JSON.stringify(tot),
@@ -4925,14 +4965,14 @@ ${forExport?'':`<div class="no-print" style="text-align:center;padding:16px">
     if(!this._payCalc||!this._payCalc.length)return toast('Recalculate first','err');
     const month=$(p+'pay-month').value;
     const t=this._payTotals();
-    if(!confirm('Submit payroll for '+month+' to the Country Leader?\n\n'
+    if(!confirm('Submit payroll for '+month+' for review?\n\nIt goes to HR, then Finance, then the Country Leader for final approval.\n\n'
       +t.staff+' staff · Net payout '+this._ghs(t.net)+'\n\nOnce submitted it cannot be edited until it is approved or returned.'))return;
     await this.savePayrollRun(p);
     const r=await API.secureSave('payroll_runs',[{id:'RUN-'+month,month,
-      status:'Submitted',submitted_by:this.user.name,submitted_at:new Date().toISOString(),approver_note:''}]);
+      status:'HR Review',submitted_by:this.user.name,submitted_at:new Date().toISOString(),approver_note:''}]);
     if(!r)return toast('Submit failed: '+(API.lastError||'unknown'),'err');
     this.audit('Payroll submitted for approval','Payroll',month,t.staff+' staff · net '+t.net.toFixed(2));
-    const cl=this.staff[COUNTRY_LEADER_ID];
+    const cl=this.staff[HR_MANAGER_ID];
     if(cl?.email)API.gasPost({action:'payrollNotify',stage:'submitted',month,
       to:cl.email,toName:cl.name,by:this.user.name,
       staffCount:t.staff,net:t.net.toFixed(2)}).catch(()=>{});
