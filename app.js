@@ -48,6 +48,16 @@ const fmtISO=iso=>{if(!iso)return'--';
   if(typeof iso==='string'&&iso.match(/^\d{1,2}\s\w{3}\s\d{4}$/))return iso;
   const[y,m,dd]=(iso+'').split('-');if(!y||!m||!dd)return iso;
   const d=new Date(iso);return isNaN(d)?iso:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});};
+/* Attendance dates come in several shapes ("31 Jul 2026", "2026-07-31",
+   "31/07/2026" from manual entries). Normalise to the app's own format
+   so reports match every row; fall back to the clock-in time. */
+const normRecDate=(d,clockIn)=>{
+  const v=String(d||'').trim();
+  const m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(m)return fmtD(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+  if(v&&!isNaN(new Date(v)))return fmtD(v);
+  return clockIn?fmtD(clockIn):v;
+};
 const fmtDT=iso=>{if(!iso)return'--';const d=new Date(iso);return isNaN(d)?iso:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});};
 
 /* ═══════════════════════════════════════════════
@@ -607,13 +617,23 @@ const API={
     }
   },
 
+  /* Supabase returns at most 1,000 rows per request, so "limit=5000"
+     silently stopped at 1,000 (~2 months) and older days showed Absent.
+     Fetch up to `pages` × 1,000 rows in parallel — same wait as one call. */
+  async _getAttendancePages(pages){
+    const res=await Promise.all(Array.from({length:pages},(_,i)=>
+      this._get('attendance','order=id.desc&limit=1000&offset='+(i*1000))));
+    if(res[0]===null)return null;
+    return res.flatMap(r=>r||[]);
+  },
+
   /* ═══════════════════════════════════════════
      HYDRATE — single call, loads all data
   ═══════════════════════════════════════════ */
   async hydrate(){
     const[staffRows,attRows,leaveRows,holRows,setRows]=await Promise.all([
       this._get('staff','order=name'),
-      this._get('attendance','order=id.desc&limit=5000'),
+      this._getAttendancePages(5),
       this._get('leave_requests','order=applied_at.desc&limit=2000'),
       this._get('holidays','order=date'),
       this._get('settings','order=key')
@@ -633,7 +653,7 @@ const API={
 
     // Transform attendance rows
     const records=(attRows||[]).map(r=>({
-      date:r.date,id:r.staff_id,name:r.name,unit:r.unit,
+      date:normRecDate(r.date,r.clock_in),id:String(r.staff_id||'').trim().toUpperCase(),name:r.name,unit:r.unit,
       in:r.clock_in,out:r.clock_out||null,hours:r.hours||null,status:r.status||'Active',
       work_mode:r.work_mode||'Office'
     }));
